@@ -10,165 +10,131 @@ Mô tả: Sử dụng EfficientNet từ thư viện HSEmotion
 import cv2
 import numpy as np
 from hsemotion.facial_emotions import HSEmotionRecognizer
+from collections import deque
 from typing import Tuple, List, Optional, Dict
 
 
 class EmotionEngine:
     """
-    Lớp nhận dạng cảm xúc sử dụng HSEmotion (EfficientNet)
-
-    Chức năng chính:
-    - Load mô hình pre-trained (EfficientNet-B0 hoặc B2)
-    - Phát hiện khuôn mặt
-    - Nhận dạng cảm xúc real-time
+    Lớp nhận dạng cảm xúc nâng cao sử dụng HSEmotion (EfficientNet)
+    
+    Tích hợp các kỹ thuật:
+    - Temporal Smoothing: Làm mịn kết quả theo thời gian (trung bình 10 frame).
+    - CLAHE Preprocessing: Cân bằng ánh sáng cục bộ để làm rõ đặc trưng cơ mặt.
+    - Adaptive Thresholding: Ngưỡng tin cậy riêng cho từng loại cảm xúc.
     """
 
     def __init__(self, model_name: str = 'enet_b0_8_best_afew'):
         """
-        Khởi tạo Emotion Engine
-
-        Args:
-            model_name: Tên mô hình HSEmotion
-                - 'enet_b0_8_best_afew': EfficientNet-B0 (nhanh, nhẹ)
-                - 'enet_b0_8_best_vgaf': EfficientNet-B0 (chính xác hơn)
-                - 'enet_b2_8': EfficientNet-B2 (chính xác nhất, chậm hơn)
+        Khởi tạo Emotion Engine nâng cao
         """
         self.model_name = model_name
-        self.emotion_recognizer = None
-        self.face_cascade = None
+        self.emotion_recognizer = HSEmotionRecognizer(model_name=model_name)
+        self.face_cascade = cv2.data.haarcascades + 'haarcascade_frontalface_default.xml'
+        self.face_classifier = cv2.CascadeClassifier(self.face_cascade)
 
         # Danh sách các cảm xúc (theo thứ tự output của mô hình 8 lớp)
         self.emotion_labels = [
-            'Anger',      # Tức giận
-            'Contempt',   # Khinh bỉ
-            'Disgust',    # Ghê tởm
-            'Fear',       # Sợ hãi
-            'Happiness',  # Vui vẻ
-            'Neutral',    # Trung tính
-            'Sadness',    # Buồn
-            'Surprise'    # Ngạc nhiên
+            'Anger', 'Contempt', 'Disgust', 'Fear', 
+            'Happiness', 'Neutral', 'Sadness', 'Surprise'
         ]
 
-        # Load models
-        self._load_models()
+        # 1. Temporal Smoothing: Lưu trữ xác suất của 10 lần nhận diện gần nhất
+        self.smoothing_buffer = deque(maxlen=10)
 
-    def _load_models(self):
+        # 2. Adaptive Thresholds: Ngưỡng riêng cho từng cảm xúc để tăng độ nhạy
+        self.thresholds = {
+            'Happiness': 0.50,  # Cao hơn để tránh nhận nhầm khi nói chuyện
+            'Sadness': 0.30,    # Thấp hơn để nhạy với các biểu cảm buồn nhẹ
+            'Surprise': 0.35,   # Thấp hơn để bắt kịp khoảnh khắc ngạc nhiên nhanh
+            'Anger': 0.40,
+            'Neutral': 0.35
+        }
+
+        # 3. CLAHE: Bộ cân bằng ánh sáng thích nghi (Contrast Limited Adaptive Histogram Equalization)
+        self.clahe = cv2.createCLAHE(clipLimit=2.0, tileGridSize=(8, 8))
+
+        print(f"✓ EmotionEngine đã nâng cấp với Temporal Smoothing & CLAHE (Model: {model_name})")
+
+    def _preprocess_face(self, face_img: np.ndarray) -> np.ndarray:
         """
-        Load mô hình nhận dạng cảm xúc và phát hiện khuôn mặt
+        Tiền xử lý nâng cao: Chuyển sang ảnh xám, áp dụng CLAHE và quay lại RGB
         """
-        try:
-            # Load HSEmotion model
-            print(f"⏳ Đang tải mô hình HSEmotion: {self.model_name}...")
-            self.emotion_recognizer = HSEmotionRecognizer(model_name=self.model_name)
-            print(f"✓ Đã tải mô hình HSEmotion thành công!")
-
-            # Load Haar Cascade cho phát hiện khuôn mặt
-            cascade_path = cv2.data.haarcascades + 'haarcascade_frontalface_default.xml'
-            self.face_cascade = cv2.CascadeClassifier(cascade_path)
-
-            if self.face_cascade.empty():
-                raise Exception("Không thể load Haar Cascade")
-
-            print("✓ Đã tải Haar Cascade thành công!")
-
-        except Exception as e:
-            print(f"❌ Lỗi khi tải models: {e}")
-            raise
-
-    def detect_faces(self, frame: np.ndarray) -> List[Tuple[int, int, int, int]]:
-        """
-        Phát hiện khuôn mặt trong khung hình
-
-        Args:
-            frame: Khung hình BGR từ OpenCV
-
-        Returns:
-            List[(x, y, w, h)] - Danh sách bounding boxes
-        """
-        # Chuyển sang grayscale để tăng tốc
-        gray = cv2.cvtColor(frame, cv2.COLOR_BGR2GRAY)
-
-        # Phát hiện khuôn mặt
-        faces = self.face_cascade.detectMultiScale(
-            gray,
-            scaleFactor=1.1,
-            minNeighbors=5,
-            minSize=(30, 30)
-        )
-
-        return faces
+        if face_img.size == 0:
+            return face_img
+            
+        # Chuyển sang Grayscale để xử lý độ tương phản
+        gray = cv2.cvtColor(face_img, cv2.COLOR_BGR2GRAY)
+        
+        # Áp dụng CLAHE làm rõ các nếp nhăn và đặc trưng biểu cảm
+        equalized = self.clahe.apply(gray)
+        
+        # HSEmotion yêu cầu ảnh RGB 3 kênh
+        processed = cv2.cvtColor(equalized, cv2.COLOR_GRAY2RGB)
+        return processed
 
     def predict_emotion(self, face_img: np.ndarray) -> Tuple[str, float, np.ndarray]:
         """
-        Nhận dạng cảm xúc từ ảnh khuôn mặt
-
-        Args:
-            face_img: Ảnh khuôn mặt (BGR)
-
-        Returns:
-            (emotion_name, confidence, probabilities_array)
+        Nhận dạng cảm xúc với xử lý làm mịn và ngưỡng thích nghi
         """
         try:
-            # HSEmotion cần ảnh RGB
-            face_rgb = cv2.cvtColor(face_img, cv2.COLOR_BGR2RGB)
+            # Bước 1: Tiền xử lý ảnh mặt
+            processed_face = self._preprocess_face(face_img)
 
-            # Predict
-            # LƯU Ý: Thư viện HSEmotion trả về (emotion_name, scores)
-            # emotion_name là một STRING (ví dụ: 'Happiness'), không phải INDEX
-            emotion_name, scores = self.emotion_recognizer.predict_emotions(
-                face_rgb,
-                logits=False  # Trả về probabilities thay vì logits
+            # Bước 2: Dự đoán lấy Raw Probabilities (logits=False)
+            emotion_name_raw, scores = self.emotion_recognizer.predict_emotions(
+                processed_face, logits=False
             )
 
-            # Tính độ tin cậy (confidence) là giá trị lớn nhất trong mảng scores
-            confidence = float(np.max(scores))
+            # Bước 3: Temporal Smoothing (Lấy trung bình cộng của buffer)
+            self.smoothing_buffer.append(scores)
+            avg_scores = np.mean(self.smoothing_buffer, axis=0)
+            
+            # Bước 4: Tìm cảm xúc có xác suất trung bình cao nhất
+            max_idx = np.argmax(avg_scores)
+            max_conf = float(avg_scores[max_idx])
+            emotion_candidate = self.emotion_labels[max_idx]
 
-            # Chuyển đổi tên cảm xúc sang định dạng chuẩn của project nếu cần
-            # (Ví dụ: 'Happiness' -> 'Happy', 'Anger' -> 'Angry')
-            mapping = {
-                'Anger': 'Angry',
-                'Happiness': 'Happy',
-                'Sadness': 'Sad',
-                'Contempt': 'Disgust'
-            }
-            emotion_name = mapping.get(emotion_name, emotion_name)
+            # Bước 5: Áp dụng Adaptive Threshold & Default Neutral logic
+            # Nếu xác suất cao nhất vẫn thấp hơn ngưỡng quy định -> Coi như Neutral
+            threshold = self.thresholds.get(emotion_candidate, 0.40)
+            
+            if max_conf < threshold:
+                final_emotion = 'Neutral'
+            else:
+                # Ánh xạ tên sang định dạng thân thiện của project
+                mapping = {
+                    'Anger': 'Angry',
+                    'Happiness': 'Happy',
+                    'Sadness': 'Sad',
+                    'Contempt': 'Disgust'
+                }
+                final_emotion = mapping.get(emotion_candidate, emotion_candidate)
 
-            return emotion_name, confidence, scores
+            return final_emotion, max_conf, avg_scores
 
         except Exception as e:
             print(f"❌ Lỗi khi predict emotion: {e}")
-            return "Unknown", 0.0, np.zeros(len(self.emotion_labels))
+            return "Neutral", 0.0, np.zeros(len(self.emotion_labels))
+
+    def detect_faces(self, frame: np.ndarray) -> List[Tuple[int, int, int, int]]:
+        """Phát hiện khuôn mặt bằng Haar Cascade"""
+        gray = cv2.cvtColor(frame, cv2.COLOR_BGR2GRAY)
+        faces = self.face_classifier.detectMultiScale(
+            gray, scaleFactor=1.1, minNeighbors=5, minSize=(30, 30)
+        )
+        return faces
 
     def process_frame(self, frame: np.ndarray) -> List[Dict]:
-        """
-        Xử lý một khung hình: phát hiện khuôn mặt + nhận dạng cảm xúc
-
-        Args:
-            frame: Khung hình BGR từ OpenCV
-
-        Returns:
-            List[{
-                'bbox': (x, y, w, h),
-                'emotion': str,
-                'confidence': float,
-                'probabilities': np.ndarray
-            }]
-        """
+        """Xử lý toàn bộ frame: Phát hiện mặt + Nhận diện cảm xúc nâng cao"""
         results = []
-
-        # Phát hiện khuôn mặt
         faces = self.detect_faces(frame)
 
-        # Nhận dạng cảm xúc cho từng khuôn mặt
         for (x, y, w, h) in faces:
-            # Crop khuôn mặt
             face_img = frame[y:y+h, x:x+w]
-
-            # Bỏ qua nếu khuôn mặt quá nhỏ
             if face_img.shape[0] < 48 or face_img.shape[1] < 48:
                 continue
 
-            # Predict emotion
             emotion, confidence, probs = self.predict_emotion(face_img)
 
             results.append({
