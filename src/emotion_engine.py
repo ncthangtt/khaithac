@@ -37,15 +37,16 @@ class EmotionEngine:
         self.emotion_recognizer = None
         self.face_cascade = None
 
-        # Danh sách các cảm xúc (theo thứ tự output của model)
+        # Danh sách các cảm xúc (theo thứ tự output của mô hình 8 lớp)
         self.emotion_labels = [
-            'Angry',      # Tức giận
+            'Anger',      # Tức giận
+            'Contempt',   # Khinh bỉ
             'Disgust',    # Ghê tởm
             'Fear',       # Sợ hãi
-            'Happy',      # Vui vẻ
-            'Sad',        # Buồn
-            'Surprise',   # Ngạc nhiên
-            'Neutral'     # Trung tính
+            'Happiness',  # Vui vẻ
+            'Neutral',    # Trung tính
+            'Sadness',    # Buồn
+            'Surprise'    # Ngạc nhiên
         ]
 
         # Load models
@@ -112,14 +113,25 @@ class EmotionEngine:
             face_rgb = cv2.cvtColor(face_img, cv2.COLOR_BGR2RGB)
 
             # Predict
-            emotion_idx, scores = self.emotion_recognizer.predict_emotions(
+            # LƯU Ý: Thư viện HSEmotion trả về (emotion_name, scores)
+            # emotion_name là một STRING (ví dụ: 'Happiness'), không phải INDEX
+            emotion_name, scores = self.emotion_recognizer.predict_emotions(
                 face_rgb,
                 logits=False  # Trả về probabilities thay vì logits
             )
 
-            # Lấy tên cảm xúc và độ tin cậy
-            emotion_name = self.emotion_labels[emotion_idx]
-            confidence = float(scores[emotion_idx])
+            # Tính độ tin cậy (confidence) là giá trị lớn nhất trong mảng scores
+            confidence = float(np.max(scores))
+
+            # Chuyển đổi tên cảm xúc sang định dạng chuẩn của project nếu cần
+            # (Ví dụ: 'Happiness' -> 'Happy', 'Anger' -> 'Angry')
+            mapping = {
+                'Anger': 'Angry',
+                'Happiness': 'Happy',
+                'Sadness': 'Sad',
+                'Contempt': 'Disgust'
+            }
+            emotion_name = mapping.get(emotion_name, emotion_name)
 
             return emotion_name, confidence, scores
 
