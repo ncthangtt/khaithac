@@ -1,0 +1,26 @@
+# ==================================================
+# REQUIREMENTS.TXT - THƯ VIỆN CẦN THIẾT
+# Dự án: Nhận dạng cảm xúc người học online
+# Đại học Bách khoa Hà Nội
+# ==================================================
+
+# --- Thư viện xử lý hình ảnh và video ---
+opencv-python==4.9.0.80          # Xử lý camera, video, hình ảnh
+opencv-contrib-python==4.9.0.80  # Các module bổ sung của OpenCV
+
+# --- Thư viện nhận dạng cảm xúc ---
+hsemotion==0.2.0                 # EmotiEffLib - Nhận dạng cảm xúc (EfficientNet)
+torch==2.2.0                     # PyTorch - Backend cho hsemotion
+torchvision==0.17.0              # Xử lý ảnh cho PyTorch
+timm==0.9.16                     # PyTorch Image Models (cần cho EfficientNet)
+
+# --- Thư viện vẽ biểu đồ ---
+matplotlib==3.8.3                # Vẽ biểu đồ cơ bản
+seaborn==0.13.2                  # Vẽ biểu đồ đẹp hơn
+
+# --- Thư viện xử lý dữ liệu ---
+pandas==2.2.1                    # Xử lý bảng dữ liệu
+numpy==1.26.4                    # Tính toán số học
+
+# --- Thư viện khác ---
+pillow==10.2.0                   # Xử lý ảnh bổ sung

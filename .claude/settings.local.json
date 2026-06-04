@@ -1,0 +1,11 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(py --version)",
+      "Bash(where python *)",
+      "Bash(python *)",
+      "Bash(winget install *)",
+      "Bash(py *)"
+    ]
+  }
+}
