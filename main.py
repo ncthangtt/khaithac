@@ -70,8 +70,13 @@ class EmotionDetectionSystem:
         # Biến theo dõi
         self.frame_count = 0
         self.emotion_buffer = []  # Lưu tạm dữ liệu trong RAM
+        self.db_saved_count = 0   # Số bản ghi đã được lưu vào DB trong vòng lặp
         self.start_time = None
         self.is_running = False
+
+        # Cache kết quả nhận diện để tái sử dụng trên frame bị skip
+        self.last_results = []  # Kết quả nhận diện của frame trước
+        self.last_frame_drawn = None  # Frame đã vẽ overlay của lần xử lý trước
 
     def start(self):
         """
@@ -106,11 +111,65 @@ class EmotionDetectionSystem:
         finally:
             self._cleanup()
 
+    def _draw_overlays(self, frame, results):
+        """
+        Vẽ toàn bộ overlay (emotion box + info text) lên frame.
+        Tách riêng để tái sử dụng trên cả frame xử lý lẫn frame bị skip.
+
+        Args:
+            frame: Khung hình gốc
+            results: Danh sách kết quả nhận diện từ engine
+
+        Returns:
+            Khung hình đã vẽ đầy đủ overlay
+        """
+        # Vẽ bounding box và emotion label cho từng khuôn mặt
+        for result in results:
+            frame = self.camera.draw_emotion_box(
+                frame,
+                result['emotion'],
+                result['confidence'],
+                result['bbox']
+            )
+
+        # Tính FPS
+        elapsed_time = time.time() - self.start_time
+        fps = self.frame_count / elapsed_time if elapsed_time > 0 else 0
+
+        # Vẽ thông tin hệ thống góc trên trái
+        info_text = [
+            f"Session: {self.session_id}",
+            f"Frame: {self.frame_count}",
+            f"FPS: {fps:.1f}",
+            f"Faces: {len(results)}",
+            f"Samples: {len(self.emotion_buffer)}"
+        ]
+        y_offset = 30
+        for i, text in enumerate(info_text):
+            frame = self.camera.draw_text(
+                frame, text,
+                position=(10, y_offset + i * 25),
+                font_scale=0.6,
+                color=(0, 255, 255),
+                thickness=2
+            )
+
+        # Vẽ hướng dẫn góc dưới
+        frame = self.camera.draw_text(
+            frame, "Nhan 'q' de thoat, 's' de chup anh",
+            position=(10, frame.shape[0] - 20),
+            font_scale=0.5,
+            color=(255, 255, 255),
+            thickness=1
+        )
+
+        return frame
+
     def _main_loop(self):
         """
         Vòng lặp chính xử lý video
         """
-        skip_frames = 2  # Xử lý mỗi 2 frame để tăng tốc
+        skip_frames = 2  # Xử lý AI mỗi 2 frame để tăng tốc
 
         while self.is_running:
             # Đọc frame
@@ -121,79 +180,55 @@ class EmotionDetectionSystem:
 
             self.frame_count += 1
 
-            # Skip frames để tăng tốc (không cần xử lý mọi frame)
+            # ── Frame bị SKIP: vẽ lại kết quả nhận diện của frame TRƯỚC ──
+            # Giúp hiển thị mượt mà, không giật, không bị nhấp nháy box
             if self.frame_count % skip_frames != 0:
-                self.camera.show_frame(frame, "Emotion Detection - HUST")
-                if self._handle_key_press() == 'quit':
+                display_frame = self._draw_overlays(frame, self.last_results)
+                self.camera.show_frame(display_frame, "Emotion Detection - HUST")
+                key_result = self._handle_key_press(display_frame)
+                if key_result == 'quit':
                     break
                 continue
 
-            # Nhận dạng cảm xúc
+            # ── Frame được XỬ LÝ: chạy AI nhận diện cảm xúc ──
             results = self.engine.process_frame(frame)
 
-            # Vẽ kết quả lên frame
+            # Cập nhật cache kết quả mới nhất
+            self.last_results = results
+
+            # Lưu dữ liệu vào buffer và database
             for result in results:
-                bbox = result['bbox']
-                emotion = result['emotion']
-                confidence = result['confidence']
-
-                # Vẽ box và label
-                frame = self.camera.draw_emotion_box(frame, emotion, confidence, bbox)
-
-                # Lưu vào buffer
                 self.emotion_buffer.append({
                     'timestamp': datetime.now().isoformat(),
-                    'emotion': emotion,
-                    'confidence': confidence
+                    'emotion': result['emotion'],
+                    'confidence': result['confidence']
                 })
 
-                # Lưu vào database (mỗi 5 detection)
+                # Lưu vào database theo batch (mỗi 5 detection)
                 if len(self.emotion_buffer) % 5 == 0:
-                    self.database.insert_emotion(emotion, confidence, self.session_id)
+                    self.database.insert_emotion(
+                        result['emotion'],
+                        result['confidence'],
+                        self.session_id
+                    )
+                    self.db_saved_count += 1
 
-            # Hiển thị thông tin trên frame
-            elapsed_time = time.time() - self.start_time
-            fps = self.frame_count / elapsed_time if elapsed_time > 0 else 0
-
-            info_text = [
-                f"Session: {self.session_id}",
-                f"Frame: {self.frame_count}",
-                f"FPS: {fps:.1f}",
-                f"Faces: {len(results)}",
-                f"Samples: {len(self.emotion_buffer)}"
-            ]
-
-            y_offset = 30
-            for i, text in enumerate(info_text):
-                frame = self.camera.draw_text(
-                    frame, text,
-                    position=(10, y_offset + i*25),
-                    font_scale=0.6,
-                    color=(0, 255, 255),
-                    thickness=2
-                )
-
-            # Hiển thị hướng dẫn
-            frame = self.camera.draw_text(
-                frame, "Nhan 'q' de thoat, 's' de chup anh",
-                position=(10, frame.shape[0] - 20),
-                font_scale=0.5,
-                color=(255, 255, 255),
-                thickness=1
-            )
-
-            # Hiển thị frame
-            self.camera.show_frame(frame, "Emotion Detection - HUST")
+            # Vẽ overlay và hiển thị
+            display_frame = self._draw_overlays(frame, results)
+            self.camera.show_frame(display_frame, "Emotion Detection - HUST")
 
             # Xử lý phím bấm
-            if self._handle_key_press() == 'quit':
+            if self._handle_key_press(display_frame) == 'quit':
                 break
 
         self.is_running = False
 
-    def _handle_key_press(self):
+    def _handle_key_press(self, current_frame=None):
         """
         Xử lý phím bấm
+
+        Args:
+            current_frame: Frame đang hiển thị (dùng để lưu screenshot)
 
         Returns:
             'quit' nếu cần thoát, None nếu tiếp tục
@@ -205,20 +240,23 @@ class EmotionDetectionSystem:
             print("\n✓ Người dùng yêu cầu thoát.")
             return 'quit'
 
-        # Phím 's' để screenshot
+        # Phím 's' để screenshot — lưu đúng frame đang hiển thị (có overlay)
         elif key == ord('s'):
             timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
             filename = f"data/screenshot_{timestamp}.jpg"
-            ret, frame = self.camera.read_frame()
-            if ret:
-                import cv2
-                cv2.imwrite(filename, frame)
+            import cv2
+            save_frame = current_frame if current_frame is not None else None
+            if save_frame is not None:
+                cv2.imwrite(filename, save_frame)
                 print(f"✓ Đã lưu ảnh: {filename}")
+            else:
+                print("⚠️ Không có frame để lưu")
 
         # Phím 'r' để reset
         elif key == ord('r'):
             print("\n⚠️ Reset dữ liệu session...")
             self.emotion_buffer.clear()
+            self.last_results = []  # Xóa cache kết quả
             print("✓ Đã xóa buffer")
 
         return None
@@ -249,15 +287,24 @@ class EmotionDetectionSystem:
             print("\n⚠️ Không có dữ liệu để tạo báo cáo.")
             return
 
-        # Lưu dữ liệu còn lại vào database
-        print("\n💾 Đang lưu dữ liệu vào database...")
-        for item in self.emotion_buffer:
+        # Chỉ lưu phần dữ liệu CHƯA được lưu trong vòng lặp
+        # (tránh ghi trùng toàn bộ buffer)
+        already_saved = self.db_saved_count  # mỗi lần ghi = 1 bản ghi (ghi từng cái)
+        # Tính số bận ghi thực tế đã vào DB: mỗi lần emotion_buffer % 5 == 0 thì gọi insert 1 lần
+        # = tổng số lần buffer chia hết cho 5 = len(buffer) // 5
+        db_written_in_loop = (len(self.emotion_buffer) // 5)
+        unsaved_items = self.emotion_buffer[db_written_in_loop * 5:]
+
+        print("\n💾 Đang lưu dữ liệu còn lại vào database...")
+        saved_now = 0
+        for item in unsaved_items:
             self.database.insert_emotion(
                 item['emotion'],
                 item['confidence'],
                 self.session_id
             )
-        print(f"✓ Đã lưu {total_samples} bản ghi vào database")
+            saved_now += 1
+        print(f"✓ Đã lưu thêm {saved_now} bản ghi (tổng: {db_written_in_loop + saved_now}/{total_samples})")
 
         # Lấy thống kê từ database
         print("\n📈 Đang tạo báo cáo thống kê...")
@@ -265,9 +312,10 @@ class EmotionDetectionSystem:
         avg_confidence = self.database.get_average_confidence(self.session_id)
 
         # In kết quả ra console
+        total_from_db = sum(emotion_counts.values())  # Dùng tổng từ DB để tính %
         print("\n🎭 PHÂN TÍCH CẢM XÚC:")
         for emotion, count in sorted(emotion_counts.items(), key=lambda x: x[1], reverse=True):
-            percentage = (count / total_samples) * 100
+            percentage = (count / total_from_db) * 100 if total_from_db > 0 else 0
             conf = avg_confidence.get(emotion, 0.0)
             print(f"  • {emotion:12s}: {count:4d} lần ({percentage:5.1f}%) - Độ tin cậy: {conf:.2f}")
 

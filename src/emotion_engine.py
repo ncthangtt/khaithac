@@ -39,8 +39,11 @@ class EmotionEngine:
             'Happiness', 'Neutral', 'Sadness', 'Surprise'
         ]
 
-        # 1. Temporal Smoothing: Lưu trữ xác suất của 10 lần nhận diện gần nhất
-        self.smoothing_buffer = deque(maxlen=10)
+        # 1. Temporal Smoothing: Mỗi khuôn mặt có buffer riêng để tránh trộn lẫn dữ liệu
+        #    Key = (cx, cy) — tâm khuôn mặt được lượng tử hóa vào lưới 60px
+        self.face_buffers: Dict[tuple, deque] = {}
+        self.BUFFER_SIZE = 10   # Lưu 10 frame gần nhất cho mỗi khuôn mặt
+        self.GRID_SIZE   = 60   # Kích thước ô lưới (px) — chịu được rung nhỏ < 60px
 
         # 2. Adaptive Thresholds: Ngưỡng riêng cho từng cảm xúc để tăng độ nhạy
         self.thresholds = {
@@ -51,10 +54,10 @@ class EmotionEngine:
             'Neutral': 0.35
         }
 
-        # 3. CLAHE: Bộ cân bằng ánh sáng thích nghi (Contrast Limited Adaptive Histogram Equalization)
+        # 3. CLAHE: Bộ cân bằng ánh sáng thích nghi
         self.clahe = cv2.createCLAHE(clipLimit=2.0, tileGridSize=(8, 8))
 
-        print(f"✓ EmotionEngine đã nâng cấp với Temporal Smoothing & CLAHE (Model: {model_name})")
+        print(f"✓ EmotionEngine đã nâng cấp với Per-Face Temporal Smoothing & CLAHE (Model: {model_name})")
 
     def _preprocess_face(self, face_img: np.ndarray) -> np.ndarray:
         """
@@ -73,9 +76,20 @@ class EmotionEngine:
         processed = cv2.cvtColor(equalized, cv2.COLOR_GRAY2RGB)
         return processed
 
-    def predict_emotion(self, face_img: np.ndarray) -> Tuple[str, float, np.ndarray]:
+    def _get_face_key(self, x: int, y: int, w: int, h: int) -> tuple:
         """
-        Nhận dạng cảm xúc với xử lý làm mịn và ngưỡng thích nghi
+        Tạo key nhận diện khuôn mặt dựa trên tâm, lượng tử hóa vào lưới
+        để chịu được dao động vị trí nhỏ (< GRID_SIZE px).
+        """
+        cx = ((x + w // 2) // self.GRID_SIZE) * self.GRID_SIZE
+        cy = ((y + h // 2) // self.GRID_SIZE) * self.GRID_SIZE
+        return (cx, cy)
+
+    def predict_emotion(self, face_img: np.ndarray,
+                        face_key: tuple = (0, 0)) -> Tuple[str, float, np.ndarray]:
+        """
+        Nhận dạng cảm xúc với xử lý làm mịn và ngưỡng thích nghi.
+        Mỗi khuôn mặt (face_key) dùng buffer riêng để tránh trộn lẫn.
         """
         try:
             # Bước 1: Tiền xử lý ảnh mặt
@@ -86,23 +100,26 @@ class EmotionEngine:
                 processed_face, logits=False
             )
 
-            # Bước 3: Temporal Smoothing (Lấy trung bình cộng của buffer)
-            self.smoothing_buffer.append(scores)
-            avg_scores = np.mean(self.smoothing_buffer, axis=0)
-            
-            # Bước 4: Tìm cảm xúc có xác suất trung bình cao nhất
+            # Bước 3: Lấy (hoặc tạo) buffer riêng cho khuôn mặt này
+            if face_key not in self.face_buffers:
+                self.face_buffers[face_key] = deque(maxlen=self.BUFFER_SIZE)
+            buf = self.face_buffers[face_key]
+            buf.append(scores)
+
+            # Bước 4: Temporal Smoothing (Trung bình cộng trong buffer)
+            avg_scores = np.mean(buf, axis=0)
+
+            # Bước 5: Tìm cảm xúc có xác suất trung bình cao nhất
             max_idx = np.argmax(avg_scores)
             max_conf = float(avg_scores[max_idx])
             emotion_candidate = self.emotion_labels[max_idx]
 
-            # Bước 5: Áp dụng Adaptive Threshold & Default Neutral logic
-            # Nếu xác suất cao nhất vẫn thấp hơn ngưỡng quy định -> Coi như Neutral
+            # Bước 6: Áp dụng Adaptive Threshold & Default Neutral logic
             threshold = self.thresholds.get(emotion_candidate, 0.40)
-            
+
             if max_conf < threshold:
                 final_emotion = 'Neutral'
             else:
-                # Ánh xạ tên sang định dạng thân thiện của project
                 mapping = {
                     'Anger': 'Angry',
                     'Happiness': 'Happy',
@@ -126,16 +143,28 @@ class EmotionEngine:
         return faces
 
     def process_frame(self, frame: np.ndarray) -> List[Dict]:
-        """Xử lý toàn bộ frame: Phát hiện mặt + Nhận diện cảm xúc nâng cao"""
+        """Xử lý toàn bộ frame: Phát hiện mặt + Nhận diện cảm xúc.
+        Mỗi khuôn mặt được theo dõi bằng face_key độc lập."""
         results = []
         faces = self.detect_faces(frame)
+
+        # Dọn buffer của khuôn mặt không còn xuất hiện (giữ bộ nhớ sạch)
+        active_keys = set()
+        for (x, y, w, h) in faces:
+            face_img = frame[y:y+h, x:x+w]
+            if face_img.shape[0] >= 48 and face_img.shape[1] >= 48:
+                active_keys.add(self._get_face_key(x, y, w, h))
+        stale_keys = set(self.face_buffers.keys()) - active_keys
+        for k in stale_keys:
+            del self.face_buffers[k]
 
         for (x, y, w, h) in faces:
             face_img = frame[y:y+h, x:x+w]
             if face_img.shape[0] < 48 or face_img.shape[1] < 48:
                 continue
 
-            emotion, confidence, probs = self.predict_emotion(face_img)
+            face_key = self._get_face_key(x, y, w, h)
+            emotion, confidence, probs = self.predict_emotion(face_img, face_key)
 
             results.append({
                 'bbox': (x, y, w, h),
@@ -143,6 +172,8 @@ class EmotionEngine:
                 'confidence': confidence,
                 'probabilities': probs
             })
+
+
 
         return results
 
