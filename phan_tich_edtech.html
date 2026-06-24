@@ -1,0 +1,1596 @@
+<!doctype html>
+<html lang="vi">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Phân tích Đồ án: Nhận dạng Cảm xúc Người học Online</title>
+    <style>
+      @import url("https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800&family=JetBrains+Mono:wght@400;500&display=swap");
+
+      * {
+        margin: 0;
+        padding: 0;
+        box-sizing: border-box;
+      }
+
+      :root {
+        --bg: #f8f9fc;
+        --card: #ffffff;
+        --primary: #2c3e7a;
+        --primary-light: #3b5a9c;
+        --accent: #e85d3a;
+        --accent2: #2ecc71;
+        --text: #1a1a2e;
+        --text-secondary: #5a6378;
+        --border: #e8ecf4;
+        --shadow: 0 4px 24px rgba(44, 62, 122, 0.08);
+        --radius: 16px;
+        --radius-sm: 10px;
+      }
+
+      html {
+        scroll-behavior: smooth;
+      }
+
+      body {
+        font-family:
+          "Inter",
+          -apple-system,
+          sans-serif;
+        background: var(--bg);
+        color: var(--text);
+        line-height: 1.7;
+        padding: 0;
+      }
+
+      /* HEADER */
+      .header {
+        background: linear-gradient(
+          135deg,
+          #1a1a2e 0%,
+          #2c3e7a 50%,
+          #3b5a9c 100%
+        );
+        color: white;
+        padding: 60px 24px;
+        text-align: center;
+        position: relative;
+        overflow: hidden;
+      }
+      .header::before {
+        content: "";
+        position: absolute;
+        top: -50%;
+        left: -50%;
+        width: 200%;
+        height: 200%;
+        background: radial-gradient(
+          circle at 30% 50%,
+          rgba(255, 255, 255, 0.03) 0%,
+          transparent 50%
+        );
+        animation: float 20s infinite linear;
+      }
+      @keyframes float {
+        0% {
+          transform: translate(0, 0);
+        }
+        100% {
+          transform: translate(5%, 5%);
+        }
+      }
+      .header-content {
+        position: relative;
+        z-index: 1;
+        max-width: 800px;
+        margin: 0 auto;
+      }
+      .header .badge {
+        display: inline-block;
+        background: rgba(255, 255, 255, 0.12);
+        backdrop-filter: blur(8px);
+        border: 1px solid rgba(255, 255, 255, 0.15);
+        padding: 6px 18px;
+        border-radius: 100px;
+        font-size: 13px;
+        font-weight: 500;
+        letter-spacing: 0.5px;
+        margin-bottom: 20px;
+      }
+      .header h1 {
+        font-size: 36px;
+        font-weight: 800;
+        letter-spacing: -0.5px;
+        margin-bottom: 12px;
+      }
+      .header h1 span {
+        color: #ffb347;
+      }
+      .header .subtitle {
+        font-size: 18px;
+        opacity: 0.85;
+        font-weight: 300;
+        margin-bottom: 20px;
+      }
+      .header-meta {
+        display: flex;
+        justify-content: center;
+        gap: 32px;
+        flex-wrap: wrap;
+        font-size: 14px;
+        opacity: 0.7;
+        margin-top: 8px;
+      }
+      .header-meta span {
+        display: flex;
+        align-items: center;
+        gap: 6px;
+      }
+
+      /* NAV / TOC */
+      .toc {
+        max-width: 1000px;
+        margin: -32px auto 0;
+        padding: 0 24px;
+        position: relative;
+        z-index: 2;
+      }
+      .toc-inner {
+        background: var(--card);
+        border-radius: var(--radius);
+        box-shadow: var(--shadow);
+        padding: 28px 36px;
+      }
+      .toc h2 {
+        font-size: 16px;
+        font-weight: 600;
+        color: var(--text-secondary);
+        text-transform: uppercase;
+        letter-spacing: 1.5px;
+        margin-bottom: 16px;
+      }
+      .toc-grid {
+        display: grid;
+        grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+        gap: 10px;
+      }
+      .toc-item {
+        display: flex;
+        align-items: center;
+        gap: 10px;
+        padding: 10px 14px;
+        background: var(--bg);
+        border-radius: var(--radius-sm);
+        text-decoration: none;
+        color: var(--text);
+        font-size: 14px;
+        font-weight: 500;
+        transition: all 0.2s;
+        cursor: pointer;
+      }
+      .toc-item:hover {
+        background: var(--primary);
+        color: white;
+        transform: translateY(-1px);
+      }
+      .toc-num {
+        width: 26px;
+        height: 26px;
+        background: var(--primary);
+        color: white;
+        border-radius: 50%;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        font-size: 12px;
+        font-weight: 700;
+        flex-shrink: 0;
+      }
+      .toc-item:hover .toc-num {
+        background: rgba(255, 255, 255, 0.2);
+      }
+
+      /* MAIN CONTENT */
+      .container {
+        max-width: 1000px;
+        margin: 0 auto;
+        padding: 40px 24px 80px;
+      }
+
+      /* SECTION */
+      .section {
+        background: var(--card);
+        border-radius: var(--radius);
+        box-shadow: var(--shadow);
+        padding: 40px 44px;
+        margin-bottom: 28px;
+        transition: box-shadow 0.3s;
+      }
+      .section:hover {
+        box-shadow: 0 8px 40px rgba(44, 62, 122, 0.12);
+      }
+
+      .section-header {
+        display: flex;
+        align-items: center;
+        gap: 14px;
+        margin-bottom: 24px;
+        padding-bottom: 16px;
+        border-bottom: 2px solid var(--border);
+      }
+      .section-icon {
+        width: 44px;
+        height: 44px;
+        border-radius: 12px;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        font-size: 20px;
+        flex-shrink: 0;
+      }
+      .section-icon.blue {
+        background: #e8f0fe;
+      }
+      .section-icon.orange {
+        background: #fef3e8;
+      }
+      .section-icon.green {
+        background: #e8fef0;
+      }
+      .section-icon.purple {
+        background: #f0e8fe;
+      }
+      .section-icon.red {
+        background: #fee8e8;
+      }
+
+      .section h2 {
+        font-size: 22px;
+        font-weight: 700;
+        color: var(--primary);
+      }
+      .section h3 {
+        font-size: 17px;
+        font-weight: 600;
+        margin: 24px 0 10px;
+        color: var(--text);
+      }
+      .section h4 {
+        font-size: 15px;
+        font-weight: 600;
+        margin: 18px 0 8px;
+        color: var(--primary-light);
+      }
+      .section p,
+      .section li {
+        font-size: 15px;
+        color: var(--text-secondary);
+        margin-bottom: 8px;
+      }
+      .section ul,
+      .section ol {
+        padding-left: 20px;
+        margin-bottom: 12px;
+      }
+      .section li {
+        margin-bottom: 5px;
+      }
+
+      .highlight-box {
+        background: #fff8e6;
+        border-left: 4px solid #f0ad4e;
+        padding: 14px 18px;
+        border-radius: 0 var(--radius-sm) var(--radius-sm) 0;
+        margin: 16px 0;
+        font-size: 14px;
+      }
+      .highlight-box.warning {
+        background: #ffe8e8;
+        border-left-color: var(--accent);
+      }
+      .highlight-box.info {
+        background: #e8f0fe;
+        border-left-color: var(--primary-light);
+      }
+      .highlight-box.success {
+        background: #e8fef0;
+        border-left-color: var(--accent2);
+      }
+
+      /* TAGS */
+      .tag {
+        display: inline-block;
+        padding: 3px 12px;
+        border-radius: 20px;
+        font-size: 12px;
+        font-weight: 600;
+        letter-spacing: 0.3px;
+      }
+      .tag.green {
+        background: #d4edda;
+        color: #155724;
+      }
+      .tag.red {
+        background: #f8d7da;
+        color: #721c24;
+      }
+      .tag.yellow {
+        background: #fff3cd;
+        color: #856404;
+      }
+      .tag.blue {
+        background: #d1ecf1;
+        color: #0c5460;
+      }
+
+      /* TABLES */
+      .table-wrap {
+        overflow-x: auto;
+        margin: 16px 0;
+      }
+      table {
+        width: 100%;
+        border-collapse: collapse;
+        font-size: 14px;
+      }
+      table th {
+        background: var(--bg);
+        font-weight: 600;
+        text-align: left;
+        padding: 10px 14px;
+        border-bottom: 2px solid var(--border);
+        color: var(--text);
+      }
+      table td {
+        padding: 9px 14px;
+        border-bottom: 1px solid var(--border);
+        color: var(--text-secondary);
+      }
+      table tr:hover td {
+        background: #f8f9fc;
+      }
+      table .metric-high {
+        color: var(--accent2);
+        font-weight: 600;
+      }
+      table .metric-low {
+        color: var(--accent);
+        font-weight: 600;
+      }
+
+      /* SCORE CARD */
+      .score-grid {
+        display: grid;
+        grid-template-columns: 200px 1fr;
+        gap: 28px;
+        align-items: center;
+      }
+      .score-circle {
+        width: 180px;
+        height: 180px;
+        border-radius: 50%;
+        background: conic-gradient(#2c3e7a 0% 73%, #e8ecf4 73% 100%);
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        position: relative;
+        margin: 0 auto;
+      }
+      .score-circle-inner {
+        width: 140px;
+        height: 140px;
+        border-radius: 50%;
+        background: white;
+        display: flex;
+        flex-direction: column;
+        align-items: center;
+        justify-content: center;
+      }
+      .score-number {
+        font-size: 42px;
+        font-weight: 800;
+        color: var(--primary);
+        line-height: 1;
+      }
+      .score-label {
+        font-size: 13px;
+        color: var(--text-secondary);
+      }
+      .score-details {
+        display: grid;
+        gap: 10px;
+      }
+      .score-bar {
+        display: flex;
+        align-items: center;
+        gap: 10px;
+      }
+      .score-bar-label {
+        width: 140px;
+        font-size: 13px;
+        font-weight: 500;
+        color: var(--text-secondary);
+        text-align: right;
+      }
+      .score-bar-track {
+        flex: 1;
+        height: 20px;
+        background: var(--border);
+        border-radius: 10px;
+        overflow: hidden;
+      }
+      .score-bar-fill {
+        height: 100%;
+        border-radius: 10px;
+        position: relative;
+        transition: width 1s ease;
+      }
+      .score-bar-fill.good {
+        background: linear-gradient(90deg, #2ecc71, #27ae60);
+      }
+      .score-bar-fill.ok {
+        background: linear-gradient(90deg, #f39c12, #e67e22);
+      }
+      .score-bar-fill.bad {
+        background: linear-gradient(90deg, #e74c3c, #c0392b);
+      }
+      .score-bar-val {
+        width: 40px;
+        font-size: 13px;
+        font-weight: 600;
+        color: var(--text);
+      }
+
+      /* QUESTION CARDS */
+      .question-grid {
+        display: grid;
+        gap: 16px;
+      }
+      .question-card {
+        background: var(--bg);
+        border-radius: var(--radius-sm);
+        padding: 20px 24px;
+        border: 1px solid var(--border);
+        transition: all 0.2s;
+      }
+      .question-card:hover {
+        border-color: var(--primary-light);
+        box-shadow: 0 2px 12px rgba(44, 62, 122, 0.08);
+      }
+      .question-card .q-header {
+        display: flex;
+        align-items: flex-start;
+        gap: 12px;
+        margin-bottom: 8px;
+      }
+      .question-card .q-category {
+        padding: 3px 12px;
+        border-radius: 20px;
+        font-size: 11px;
+        font-weight: 700;
+        text-transform: uppercase;
+        letter-spacing: 0.5px;
+        white-space: nowrap;
+        flex-shrink: 0;
+        margin-top: 2px;
+      }
+      .q-category.tech {
+        background: #d1ecf1;
+        color: #0c5460;
+      }
+      .q-category.edu {
+        background: #d4edda;
+        color: #155724;
+      }
+
+      .question-card .q-context {
+        font-size: 13px;
+        color: var(--text-secondary);
+        margin-bottom: 8px;
+        padding: 8px 12px;
+        background: white;
+        border-radius: 6px;
+        border-left: 3px solid var(--border);
+      }
+      .question-card .q-text {
+        font-size: 15px;
+        font-weight: 500;
+        color: var(--text);
+        line-height: 1.6;
+      }
+      .question-card .q-hint {
+        margin-top: 10px;
+        padding: 10px 14px;
+        background: #fff8e6;
+        border-radius: 6px;
+        font-size: 13px;
+        color: #856404;
+      }
+      .question-card .q-hint strong {
+        color: #6c5200;
+      }
+
+      /* INSIGHT LISTS */
+      .insight-list {
+        list-style: none;
+        padding: 0;
+      }
+      .insight-list li {
+        padding: 10px 16px;
+        margin-bottom: 8px;
+        background: var(--bg);
+        border-radius: var(--radius-sm);
+        border-left: 3px solid var(--primary-light);
+        font-size: 14px;
+        color: var(--text-secondary);
+      }
+      .insight-list li.green {
+        border-left-color: var(--accent2);
+      }
+      .insight-list li.red {
+        border-left-color: var(--accent);
+      }
+      .insight-list li.orange {
+        border-left-color: #f39c12;
+      }
+
+      /* BUG ALERT */
+      .bug-alert {
+        background: linear-gradient(135deg, #fff5f5, #ffe8e8);
+        border: 2px solid #e74c3c;
+        border-radius: var(--radius-sm);
+        padding: 20px 24px;
+        margin: 16px 0;
+      }
+      .bug-alert h4 {
+        color: #c0392b;
+        font-size: 16px;
+        margin-bottom: 8px;
+      }
+      .bug-alert p,
+      .bug-alert li {
+        color: #7a2a2a;
+        font-size: 14px;
+      }
+      .bug-alert code {
+        background: rgba(231, 76, 60, 0.08);
+        padding: 2px 6px;
+        border-radius: 4px;
+        font-family: "JetBrains Mono", monospace;
+        font-size: 13px;
+      }
+
+      /* FOOTER */
+      .footer {
+        text-align: center;
+        padding: 40px 24px;
+        color: var(--text-secondary);
+        font-size: 14px;
+        border-top: 1px solid var(--border);
+        max-width: 1000px;
+        margin: 0 auto;
+      }
+      .footer strong {
+        color: var(--text);
+      }
+
+      /* RESPONSIVE */
+      @media (max-width: 768px) {
+        .header h1 {
+          font-size: 26px;
+        }
+        .section {
+          padding: 24px 20px;
+        }
+        .score-grid {
+          grid-template-columns: 1fr;
+        }
+        .score-circle {
+          width: 140px;
+          height: 140px;
+        }
+        .score-circle-inner {
+          width: 108px;
+          height: 108px;
+        }
+        .score-number {
+          font-size: 32px;
+        }
+        .score-bar-label {
+          width: 100px;
+          font-size: 12px;
+        }
+        .toc {
+          margin-top: -20px;
+        }
+        .toc-inner {
+          padding: 20px;
+        }
+        .question-card {
+          padding: 16px;
+        }
+      }
+
+      /* ANIMATIONS */
+      .section {
+        animation: fadeUp 0.5s ease forwards;
+        opacity: 0;
+      }
+      .section:nth-child(1) {
+        animation-delay: 0.1s;
+      }
+      .section:nth-child(2) {
+        animation-delay: 0.2s;
+      }
+      .section:nth-child(3) {
+        animation-delay: 0.3s;
+      }
+      .section:nth-child(4) {
+        animation-delay: 0.4s;
+      }
+      .section:nth-child(5) {
+        animation-delay: 0.5s;
+      }
+      .section:nth-child(6) {
+        animation-delay: 0.6s;
+      }
+      @keyframes fadeUp {
+        from {
+          opacity: 0;
+          transform: translateY(20px);
+        }
+        to {
+          opacity: 1;
+          transform: translateY(0);
+        }
+      }
+      .code-block {
+        background: #1a1a2e;
+        color: #e8e8e8;
+        font-family: "JetBrains Mono", monospace;
+        font-size: 13px;
+        padding: 14px 18px;
+        border-radius: 8px;
+        overflow-x: auto;
+        margin: 12px 0;
+        line-height: 1.6;
+      }
+      .code-block .comment {
+        color: #6a9955;
+      }
+      .code-block .keyword {
+        color: #569cd6;
+      }
+      .code-block .string {
+        color: #ce9178;
+      }
+      .code-block .number {
+        color: #b5cea8;
+      }
+
+      .two-col {
+        display: grid;
+        grid-template-columns: 1fr 1fr;
+        gap: 16px;
+      }
+      @media (max-width: 600px) {
+        .two-col {
+          grid-template-columns: 1fr;
+        }
+      }
+
+      .stat-row {
+        display: flex;
+        gap: 16px;
+        flex-wrap: wrap;
+        margin: 16px 0;
+      }
+      .stat-card {
+        flex: 1;
+        min-width: 120px;
+        background: var(--bg);
+        border-radius: var(--radius-sm);
+        padding: 16px;
+        text-align: center;
+        border: 1px solid var(--border);
+      }
+      .stat-card .num {
+        font-size: 28px;
+        font-weight: 800;
+        color: var(--primary);
+      }
+      .stat-card .label {
+        font-size: 12px;
+        color: var(--text-secondary);
+        margin-top: 4px;
+      }
+    </style>
+  </head>
+  <body>
+    <!-- HEADER -->
+    <div class="header">
+      <div class="header-content">
+        <div class="badge">🎓 EdTech · Bài tập lớn cuối kỳ</div>
+        <h1>
+          Phân tích Đồ án: <span>Nhận dạng Cảm xúc</span><br />Người học Online
+        </h1>
+        <p class="subtitle">
+          Đánh giá chuyên sâu · Phát hiện lỗi · Câu hỏi phản biện cho giáo viên
+        </p>
+        <div class="header-meta">
+          <span>📚 Môn: Khai thác đa phương tiện</span>
+          <span>🏫 Đại học Bách khoa Hà Nội</span>
+          <span>📅 2026</span>
+        </div>
+      </div>
+    </div>
+
+    <!-- TABLE OF CONTENTS -->
+    <div class="toc">
+      <div class="toc-inner">
+        <h2>📋 Nội dung phân tích</h2>
+        <div class="toc-grid">
+          <a class="toc-item" href="#section1"
+            ><span class="toc-num">1</span>Hiện trạng & Phát hiện</a
+          >
+          <a class="toc-item" href="#section2"
+            ><span class="toc-num">2</span>Bugs & Hạn chế</a
+          >
+          <a class="toc-item" href="#section3"
+            ><span class="toc-num">3</span>Hiệu suất Thực tế</a
+          >
+          <a class="toc-item" href="#section4"
+            ><span class="toc-num">4</span>Kiểm thử & Đánh giá</a
+          >
+          <a class="toc-item" href="#section5"
+            ><span class="toc-num">5</span>Câu hỏi Phản biện</a
+          >
+          <a class="toc-item" href="#section6"
+            ><span class="toc-num">6</span>Điểm số & Cải tiến</a
+          >
+        </div>
+      </div>
+    </div>
+
+    <div class="container">
+      <!-- SECTION 1: HIỆN TRẠNG -->
+      <div class="section" id="section1">
+        <div class="section-header">
+          <div class="section-icon blue">🔍</div>
+          <h2>I. Hiện trạng — Báo cáo vs Thực tế</h2>
+        </div>
+        <p>
+          Sau khi đối chiếu file <code>BAO_CAO.md</code> với codebase thực tế (5
+          module Python: <code>capture.py</code>,
+          <code>emotion_engine.py</code>, <code>database.py</code>,
+          <code>analytics.py</code>, <code>main.py</code>), mình phát hiện
+          <strong>nhiều điểm khác biệt đáng chú ý</strong> giữa lý thuyết và cài
+          đặt thực tế.
+        </p>
+
+        <h3>⚡ So sánh nhanh: Báo cáo viết gì — Code làm gì</h3>
+        <div class="table-wrap">
+          <table>
+            <thead>
+              <tr>
+                <th>Tiêu chí</th>
+                <th>BAO_CAO.md nói</th>
+                <th>Code thực tế</th>
+                <th>Đánh giá</th>
+              </tr>
+            </thead>
+            <tbody>
+              <tr>
+                <td><strong>EfficientNet-B0</strong></td>
+                <td>
+                  Phân tích Compound Scaling, tự thiết kế, so sánh với LBP/HOG
+                </td>
+                <td>
+                  Gọi <code>HSEmotionRecognizer(model_name)</code> — dùng
+                  pre-trained model có sẵn
+                </td>
+                <td><span class="tag red">⚠️ Sai</span></td>
+              </tr>
+              <tr>
+                <td><strong>Compound Scaling</strong></td>
+                <td>Nhấn mạnh như đóng góp của đồ án</td>
+                <td>
+                  Là phát minh của Google (Tan &amp; Le, 2019), đóng gói sẵn
+                  trong thư viện
+                </td>
+                <td><span class="tag red">⚠️ Sai</span></td>
+              </tr>
+              <tr>
+                <td><strong>So sánh LBP / HOG</strong></td>
+                <td>So sánh chi tiết với các phương pháp truyền thống</td>
+                <td>
+                  Không một dòng code LBP/HOG/SVM nào — chỉ là lý thuyết suông
+                </td>
+                <td><span class="tag red">⚠️ Sai</span></td>
+              </tr>
+              <tr>
+                <td><strong>Face Detection</strong></td>
+                <td><em>(Không đề cập)</em></td>
+                <td>
+                  Haar Cascade (Viola-Jones, 2001) — phương pháp cổ điển, không
+                  deep learning
+                </td>
+                <td><span class="tag yellow">🤫 Giấu</span></td>
+              </tr>
+              <tr>
+                <td><strong>Database</strong></td>
+                <td>Index giúp truy vấn nhanh, thiết kế tối ưu</td>
+                <td>Mở/kết nối/đóng DB mỗi insert — anti-pattern hiệu năng</td>
+                <td><span class="tag red">⚠️ Lệch</span></td>
+              </tr>
+              <tr>
+                <td><strong>Temporal Smoothing</strong></td>
+                <td><em>(Không đề cập chi tiết)</em></td>
+                <td>
+                  Per-face buffer deque trung bình 10 frame — thiết kế khá thông
+                  minh
+                </td>
+                <td><span class="tag green">✅ Tốt</span></td>
+              </tr>
+            </tbody>
+          </table>
+        </div>
+
+        <div class="highlight-box info">
+          <strong>📌 Nhận xét chính:</strong> Báo cáo thiên về "lý thuyết suông"
+          — viết rất hay về các khái niệm (Compound Scaling, so sánh thuật toán)
+          nhưng không phản ánh đúng những gì code thực sự làm. Face detection
+          bằng Haar Cascade — bước quan trọng nhất — lại hoàn toàn không được
+          nhắc đến.
+        </div>
+      </div>
+
+      <!-- SECTION 2: BUGS & HẠN CHẾ -->
+      <div class="section" id="section2">
+        <div class="section-header">
+          <div class="section-icon red">🐛</div>
+          <h2>II. Bugs & Hạn chế Kỹ thuật</h2>
+        </div>
+
+        <h3>🚨 Bug nghiêm trọng: Mất ~80% dữ liệu cảm xúc</h3>
+        <div class="bug-alert">
+          <h4>🔥 Bug trong cơ chế ghi DB batch</h4>
+          <p>
+            <strong>Vị trí:</strong> <code>main.py</code> — vòng lặp
+            <code>_main_loop()</code> và <code>_cleanup()</code>
+          </p>
+          <p><strong>Cơ chế hiện tại:</strong></p>
+          <div class="code-block">
+            <span class="comment"># main.py lines 200-214</span>
+            <span class="keyword">for</span> result
+            <span class="keyword">in</span> results:
+            self.emotion_buffer.append({...}) <span class="keyword">if</span>
+            <span class="built_in">len</span>(self.emotion_buffer) % 5 == 0:
+            self.database.insert_emotion(result[<span class="string"
+              >'emotion'</span
+            >], ...) <span class="comment"># Chỉ insert 1 emotion cuối!</span>
+          </div>
+          <p>
+            <strong>Vấn đề:</strong> Khi buffer đạt 5 phần tử, code chỉ insert
+            <strong>emotion thứ 5</strong> (của result cuối cùng). 4 emotion đầu
+            tiên trong buffer <strong>biến mất vĩnh viễn</strong>.
+          </p>
+          <p>
+            💥 <strong>Kết quả:</strong> Với session 15 phút, lý thuyết có
+            ~1.350 mẫu, chỉ ~270 được ghi vào DB →
+            <strong>mất 80% dữ liệu</strong>.
+          </p>
+          <p>
+            🧪 <strong>Cách fix đơn giản:</strong> Dùng
+            <code>executemany</code> với transaction, flush toàn bộ buffer định
+            kỳ thay vì insert từng cái.
+          </p>
+        </div>
+
+        <div class="two-col">
+          <div>
+            <h3>⚠️ Các hạn chế khác</h3>
+            <ul class="insight-list">
+              <li class="red">
+                <strong>Haar Cascade cổ điển:</strong> Face detection dùng
+                Viola-Jones (2001), miss ~50% mặt nghiêng, tối, đeo khẩu trang.
+                Trong khi PyTorch đã có sẵn cho HSEmotion — hoàn toàn có thể
+                dùng MTCNN.
+              </li>
+              <li class="red">
+                <strong>SQLite anti-pattern:</strong> Mở/kết nối/đóng DB cho mỗi
+                INSERT — overhead ~15-40ms/lần. Không dùng WAL mode, không batch
+                transaction.
+              </li>
+              <li class="orange">
+                <strong>Label mapping sai tâm lý:</strong> "Contempt" (khinh bỉ)
+                → "Disgust" (kinh tởm) là hai cảm xúc hoàn toàn khác nhau về mặt
+                tâm lý học.
+              </li>
+              <li class="orange">
+                <strong>Adaptive Threshold "giả":</strong> Chỉ là dictionary
+                hardcode 5 ngưỡng — không thực sự "adaptive" theo context hay
+                chất lượng ảnh.
+              </li>
+              <li class="red">
+                <strong>Không tracking:</strong> Face_key dùng lưới 60px thô —
+                không IoU tracking, không SORT/DeepSORT → không theo dõi nhất
+                quán.
+              </li>
+              <li class="orange">
+                <strong>Không logging:</strong> Dùng <code>print()</code> thay
+                vì <code>logging</code> — khó debug, không có cấp độ log.
+              </li>
+              <li class="red">
+                <strong>Code duplicate:</strong> <code>_main_loop</code> xuất
+                hiện ở cả <code>emotion_engine.py</code> và
+                <code>main.py</code>.
+              </li>
+            </ul>
+          </div>
+          <div>
+            <h3>✅ Điểm sáng thực sự</h3>
+            <ul class="insight-list">
+              <li class="green">
+                <strong>Per-face Temporal Smoothing:</strong> Buffer riêng từng
+                khuôn mặt với key lượng tử hóa (grid 60px) — xử lý rung nhỏ và
+                multi-face rất tốt. Cleanup buffer cũ tự động.
+              </li>
+              <li class="green">
+                <strong>CLAHE Preprocessing:</strong> Cân bằng ánh sáng cục bộ
+                (clipLimit=2.0, tileGridSize=8×8) — cải thiện robustness với
+                điều kiện sáng không đều.
+              </li>
+              <li class="green">
+                <strong>Kiến trúc module sạch:</strong> capture → engine →
+                database → analytics — tách biệt rõ ràng, dependency injection
+                đơn giản.
+              </li>
+              <li class="green">
+                <strong>Skip frame thông minh:</strong> Cache kết quả frame
+                trước cho frame bị skip → overlay không bị nhấp nháy.
+              </li>
+              <li class="green">
+                <strong>Visualization đầy đủ:</strong> 4 loại biểu đồ (bar, pie,
+                timeline, summary report) — màu sắc đồng bộ xuyên suốt.
+              </li>
+              <li class="green">
+                <strong>Session isolation:</strong> session_id cho phép quản lý
+                nhiều phiên trên cùng database.
+              </li>
+            </ul>
+          </div>
+        </div>
+      </div>
+
+      <!-- SECTION 3: HIỆU SUẤT THỰC TẾ -->
+      <div class="section" id="section3">
+        <div class="section-header">
+          <div class="section-icon orange">📊</div>
+          <h2>III. Hiệu suất Thực tế (CPU i5, không GPU)</h2>
+        </div>
+
+        <p>
+          Bảng dưới đây ước lượng hiệu suất dựa trên codebase, với giả định chạy
+          trên laptop i5-1135G7 (8GB RAM, Iris Xe, CPU-only) — cấu hình phổ biến
+          của sinh viên.
+        </p>
+
+        <h3>⏱️ Latency từng khâu (1 khuôn mặt)</h3>
+        <div class="table-wrap">
+          <table>
+            <thead>
+              <tr>
+                <th>Khâu</th>
+                <th>Latency (ms)</th>
+                <th>Ghi chú</th>
+              </tr>
+            </thead>
+            <tbody>
+              <tr>
+                <td>Đọc frame từ camera</td>
+                <td>~3</td>
+                <td>OpenCV capture buffer</td>
+              </tr>
+              <tr>
+                <td>Gray + Haar Cascade detect</td>
+                <td>~8-15</td>
+                <td>scaleFactor=1.1, nhanh nhưng dễ miss mặt nhỏ</td>
+              </tr>
+              <tr>
+                <td>Crop + CLAHE + chuyển RGB</td>
+                <td>~2-3</td>
+                <td>clipLimit=2.0</td>
+              </tr>
+              <tr>
+                <td>HSEmotion inference</td>
+                <td><strong>~18-25</strong></td>
+                <td>EfficientNet-B0 (~4M params, float32)</td>
+              </tr>
+              <tr>
+                <td>Per-face buffer + smoothing</td>
+                <td>~1</td>
+                <td>np.mean đơn giản</td>
+              </tr>
+              <tr>
+                <td>DB insert (open+exec+commit+close)</td>
+                <td><span class="metric-low">~15-40</span></td>
+                <td>Anti-pattern nặng, chiếm 30-50% thời gian insert</td>
+              </tr>
+              <tr>
+                <td>Vẽ overlay + imshow</td>
+                <td>~3-5</td>
+                <td>OpenCV rendering</td>
+              </tr>
+            </tbody>
+          </table>
+        </div>
+
+        <h3>🎬 FPS ước tính thực tế</h3>
+        <div class="table-wrap">
+          <table>
+            <thead>
+              <tr>
+                <th>Tình huống</th>
+                <th>FPS hiển thị</th>
+                <th>Ghi chú</th>
+              </tr>
+            </thead>
+            <tbody>
+              <tr>
+                <td>1 mặt, skip=2, <strong>không</strong> DB insert</td>
+                <td><span class="metric-high">~14-18</span></td>
+                <td>Frame AI ~55ms + frame skip ~8ms → TB ~31ms</td>
+              </tr>
+              <tr>
+                <td>1 mặt, skip=2, <strong>có</strong> DB insert</td>
+                <td><span class="metric-low">~10-13</span></td>
+                <td>DB insert ~25ms mỗi 5 AI frame (~0.33s/lần)</td>
+              </tr>
+              <tr>
+                <td>1 mặt, skip=0 (100% AI)</td>
+                <td>~8-10</td>
+                <td>100% frame AI ~35ms + DB overhead</td>
+              </tr>
+              <tr>
+                <td><strong>3 mặt, skip=2, có DB</strong></td>
+                <td>
+                  <span class="metric-low"><strong>~5-7</strong></span>
+                </td>
+                <td>3× Haar + 3× inference → ~100-120ms cho frame AI</td>
+              </tr>
+              <tr>
+                <td>&gt;5 mặt, skip=2</td>
+                <td>~2-4</td>
+                <td>Cascade chậm hơn khi scale nhiều face</td>
+              </tr>
+            </tbody>
+          </table>
+        </div>
+
+        <h3>💿 DB Insert — Số records trong 15 phút</h3>
+        <div class="table-wrap">
+          <table>
+            <thead>
+              <tr>
+                <th>Kịch bản</th>
+                <th>Records (lý thuyết)</th>
+                <th>Records (thực tế do bug)</th>
+                <th>% mất</th>
+              </tr>
+            </thead>
+            <tbody>
+              <tr>
+                <td>1 mặt, 5 phút</td>
+                <td>~450</td>
+                <td>~90</td>
+                <td><span class="metric-low">~80%</span></td>
+              </tr>
+              <tr>
+                <td>1 mặt, <strong>15 phút</strong></td>
+                <td><strong>~1.350</strong></td>
+                <td><strong>~270</strong></td>
+                <td>
+                  <span class="metric-low"><strong>~80%</strong></span>
+                </td>
+              </tr>
+              <tr>
+                <td>3 mặt, 15 phút</td>
+                <td>~4.050</td>
+                <td>~810</td>
+                <td><span class="metric-low">~80%</span></td>
+              </tr>
+              <tr>
+                <td>1 mặt, 60 phút</td>
+                <td>~5.400</td>
+                <td>~1.080</td>
+                <td><span class="metric-low">~80%</span></td>
+              </tr>
+            </tbody>
+          </table>
+        </div>
+
+        <div class="highlight-box warning">
+          <strong>⚠️ Kết luận hiệu suất:</strong> Hệ thống chạy ổn ở mức demo
+          (1-2 người, phòng đủ sáng). Khi có &gt;3 khuôn mặt cùng lúc, FPS giảm
+          mạnh (~5-7). Bug DB khiến ~80% dữ liệu cảm xúc không được ghi lại —
+          con số phân tích cuối buổi sẽ
+          <strong>thiếu chính xác nghiêm trọng</strong>.
+        </div>
+
+        <div class="stat-row">
+          <div class="stat-card">
+            <div class="num">10-13</div>
+            <div class="label">FPS (1 face)</div>
+          </div>
+          <div class="stat-card">
+            <div class="num" style="color: var(--accent)">~80%</div>
+            <div class="label">Dữ liệu mất do bug</div>
+          </div>
+          <div class="stat-card">
+            <div class="num">5-7</div>
+            <div class="label">FPS (3 faces)</div>
+          </div>
+          <div class="stat-card">
+            <div class="num">~0.5s</div>
+            <div class="label">Latency smoothing</div>
+          </div>
+          <div class="stat-card">
+            <div class="num">~60-80%</div>
+            <div class="label">CPU usage</div>
+          </div>
+        </div>
+      </div>
+
+      <!-- SECTION 4: KIỂM THỬ -->
+      <div class="section" id="section4">
+        <div class="section-header">
+          <div class="section-icon purple">🧪</div>
+          <h2>IV. Đánh giá Quy trình Kiểm thử</h2>
+        </div>
+
+        <div class="two-col">
+          <div>
+            <h3>🔴 Những gì THIẾU</h3>
+            <ul class="insight-list">
+              <li class="red">
+                <strong>Thiếu metric định lượng:</strong> Không accuracy,
+                precision, recall, F1-score, confusion matrix. "Thử biểu cảm"
+                bằng mắt thường là chủ quan, không tái lập được.
+              </li>
+              <li class="red">
+                <strong>Thiếu Unit Test:</strong> Không pytest/unittest cho
+                module nào. EmotionEngine.predict_emotion() với ảnh đen/ảnh rỗng
+                — không ai kiểm tra.
+              </li>
+              <li class="red">
+                <strong>Thiếu Stress Test:</strong> Chạy 5 phút với 1 người
+                không phát hiện được memory leak, CPU throttling, DB phình to.
+              </li>
+              <li class="red">
+                <strong>Thiếu Edge Cases:</strong> Không có ai trong khung hình?
+                Đeo khẩu trang? Nghiêng mặt? Camera mất kết nối?
+              </li>
+              <li class="red">
+                <strong>5 phút ≠ 15 phút:</strong> Báo cáo cam kết 10-15 phút
+                nhưng test chỉ 5 phút — không phát hiện bug DB chỉ lộ ra khi
+                chạy dài.
+              </li>
+              <li class="orange">
+                <strong>Không benchmark tách bạc:</strong> Latency từng khâu
+                (Haar, HSEmotion, DB write, v.v.) không được đo riêng.
+              </li>
+            </ul>
+          </div>
+          <div>
+            <h3>🟢 Đề xuất cải thiện</h3>
+            <ul class="insight-list">
+              <li class="green">
+                <strong>Thêm Confusion Matrix:</strong> Chạy model trên tập con
+                FER2013/AffectNet có nhãn → accuracy/precision/recall/F1 thực
+                tế.
+              </li>
+              <li class="green">
+                <strong>Unit test với pytest:</strong> Test emotion_engine (ảnh
+                rỗng, ảnh đen, &lt;48×48), database (SQL injection, unicode),
+                analytics (dict rỗng).
+              </li>
+              <li class="green">
+                <strong>Stress test đa luồng:</strong> Dùng file video (không
+                webcam) chạy 15-30 phút, đo CPU%, RAM, FPS, records.
+              </li>
+              <li class="green">
+                <strong>Edge case suite:</strong> (a) không người, (b) nhiều
+                người, (c) khẩu trang, (d) thiếu sáng, (e) chói sáng, (f) góc
+                nghiêng, (g) camera ngắt giữa chừng.
+              </li>
+              <li class="green">
+                <strong>Benchmark từng khâu:</strong> Đo riêng latency Haar
+                Cascade, HSEmotion inference, CLAHE, DB insert.
+              </li>
+              <li class="green">
+                <strong>Regression suite tự động:</strong> File video test mẫu
+                30s, pipeline không GUI, kiểm tra output DB tự động.
+              </li>
+            </ul>
+          </div>
+        </div>
+      </div>
+
+      <!-- SECTION 5: CÂU HỎI PHẢN BIỆN -->
+      <div class="section" id="section5">
+        <div class="section-header">
+          <div class="section-icon orange">🎯</div>
+          <h2>V. Câu hỏi Phản biện cho Giáo viên</h2>
+        </div>
+        <p style="margin-bottom: 16px">
+          <em
+            >7 câu hỏi được soạn để thể hiện sự đầu tư nghiên cứu — chia làm 2
+            nhóm: Kỹ thuật và Ứng dụng.</em
+          >
+        </p>
+
+        <div class="question-grid">
+          <!-- Q1 -->
+          <div class="question-card">
+            <div class="q-header">
+              <span class="q-category tech">KỸ THUẬT</span>
+              <strong>Compound Scaling — đóng góp của ai?</strong>
+            </div>
+            <div class="q-context">
+              <strong>Bối cảnh:</strong> BAO_CAO.md (Phần 1) phân tích dài về
+              Compound Scaling như "yếu tố then chốt". Nhưng code chỉ gọi
+              <code>HSEmotionRecognizer</code> — pre-trained model hoàn chỉnh.
+            </div>
+            <div class="q-text">
+              "Thưa cô, trong đồ án em sử dụng EfficientNet-B0 qua thư viện
+              HSEmotion pre-trained. Compound Scaling là phát minh của nhóm
+              Google (Tan &amp; Le, 2019) đã được đóng gói sẵn. Em muốn hỏi:
+              <strong
+                >nếu không fine-tune model trên dữ liệu riêng, làm sao để khẳng
+                định các ưu điểm của Compound Scaling thực sự phát huy tác dụng
+                trong bài toán của mình?</strong
+              >
+              Em có cần fine-tune không ạ?"
+            </div>
+            <div class="q-hint">
+              <strong>🧠 Gợi ý trả lời:</strong> Với đồ án ở mức prototype, dùng
+              pre-trained model là chấp nhận được. Nhưng cần phân biệt rõ: ưu
+              điểm là của kiến trúc model, không phải do nhóm tự tối ưu.
+              Fine-tune trên dữ liệu học online (điều kiện sáng, webcam chất
+              lượng thấp) sẽ cải thiện đáng kể độ chính xác.
+            </div>
+          </div>
+
+          <!-- Q2 -->
+          <div class="question-card">
+            <div class="q-header">
+              <span class="q-category tech">KỸ THUẬT</span>
+              <strong>Haar Cascade — tại sao không dùng deep learning?</strong>
+            </div>
+            <div class="q-context">
+              <strong>Bối cảnh:</strong> EmotionEngine dùng Haar Cascade
+              (Viola-Jones, 2001) cho face detection, trong khi PyTorch đã có
+              sẵn và HSEmotion là deep learning.
+            </div>
+            <div class="q-text">
+              "Thưa cô, hệ thống đã có PyTorch và HSEmotion (deep learning),
+              nhưng em lại chọn Haar Cascade — phương pháp cổ điển từ 2001 — để
+              phát hiện khuôn mặt.
+              <strong
+                >Em có thể thay bằng MTCNN hay RetinaFace (deep learning, chạy
+                PyTorch) không? Nếu thay thì FPS và độ chính xác thay đổi thế
+                nào?</strong
+              >
+              Đặc biệt với học sinh đeo kính, quay nghiêng hoặc đeo khẩu trang."
+            </div>
+            <div class="q-hint">
+              <strong>🧠 Gợi ý trả lời:</strong> Haar Cascade nhẹ (~1-2ms), chạy
+              CPU tốt, không cần GPU. MTCNN chính xác hơn (~5-10ms/face).
+              Trade-off: chấp nhận false positive thấp hơn để giữ FPS &gt;15 cho
+              demo. Với khẩu trang, cả hai đều giảm mạnh — cần giải pháp riêng.
+            </div>
+          </div>
+
+          <!-- Q3 -->
+          <div class="question-card">
+            <div class="q-header">
+              <span class="q-category tech">KỸ THUẬT</span>
+              <strong>SQLite — mở/đóng connection mỗi lần insert?</strong>
+            </div>
+            <div class="q-context">
+              <strong>Bối cảnh:</strong> database.py mở connection → INSERT →
+              commit → đóng connection mỗi lần gọi insert_emotion(). Cho 15 phút
+              video, overhead rất lớn.
+            </div>
+            <div class="q-text">
+              "Thưa cô, em thấy code database.py hiện tại đang mở và đóng SQLite
+              connection cho từng INSERT — một anti-pattern về hiệu năng. Với
+              session 15 phút và 3 khuôn mặt (~4.000 records), overhead
+              connection chiếm ~30% thời gian.
+              <strong
+                >Nếu em dùng một connection persistent và batch insert (10-50
+                records/lần) bằng executemany + transaction, thì FPS cải thiện
+                được bao nhiêu phần trăm? Có nên bật WAL mode không ạ?</strong
+              >"
+            </div>
+            <div class="q-hint">
+              <strong>🧠 Gợi ý trả lời:</strong> Fix đơn giản: giữ connection
+              persistent (mở 1 lần đầu, đóng khi cleanup). Dùng transaction
+              (BEGIN + COMMIT) cho batch 50-100 records. WAL mode cho phép
+              đọc/ghi đồng thời. Cải thiện ~20-30% FPS, giảm CPU usage đáng kể.
+            </div>
+          </div>
+
+          <!-- Q4 -->
+          <div class="question-card">
+            <div class="q-header">
+              <span class="q-category tech">KỸ THUẬT</span>
+              <strong
+                >Temporal Smoothing — delay bao nhiêu là chấp nhận được?</strong
+              >
+            </div>
+            <div class="q-context">
+              <strong>Bối cảnh:</strong> Buffer 10 frame + skip_frames=2 → cần
+              ~20 frame (~1-1.5 giây) để cập nhật khi cảm xúc thay đổi.
+            </div>
+            <div class="q-text">
+              "Với BUFFER_SIZE=10 và skip_frames=2, hệ thống cần ~20 frame
+              (~1-1.5 giây) để chuyển từ nhận diện cảm xúc cũ sang mới. Nếu học
+              sinh chuyển từ 'tập trung' sang 'bối rối' trong 0.5 giây, hệ thống
+              sẽ bỏ lỡ.
+              <strong
+                >Em có thể dùng Exponential Moving Average (EMA) thay vì simple
+                average để giảm latency không? Đánh đổi giữa smoothness và
+                latency nên nghiêng về bên nào cho bài toán giáo dục?</strong
+              >"
+            </div>
+            <div class="q-hint">
+              <strong>🧠 Gợi ý trả lời:</strong> EMA với alpha=0.5 đáp ứng nhanh
+              hơn (cần ~3-4 frame thay vì 10). Giảm skip_frames từ 2 xuống 1 (AI
+              xử lý 2/3 frame thay vì 1/3) cũng giúp ích. Với giáo dục, ưu tiên
+              smoothness hơn vì can thiệp sư phạm không cần phản ứng mili-giây.
+            </div>
+          </div>
+
+          <!-- Q5 -->
+          <div class="question-card">
+            <div class="q-header">
+              <span class="q-category edu">ỨNG DỤNG</span>
+              <strong>Scale không GPU — 1.000 học sinh thì sao?</strong>
+            </div>
+            <div class="q-context">
+              <strong>Bối cảnh:</strong> Báo cáo cam kết "chạy mượt trên máy
+              tính cá nhân không cần GPU". Nhưng EfficientNet-B0 vẫn là neural
+              network, PyTorch on CPU có hạn.
+            </div>
+            <div class="q-text">
+              "Thưa cô, với cấu hình laptop phổ biến của sinh viên (i5, 8GB RAM,
+              không GPU), hệ thống chạy ~10-13 FPS với 1 mặt. Nếu triển khai cho
+              1.000 học sinh cùng lúc — mỗi em chạy một instance —
+              <strong
+                >giải pháp scale như thế nào? Có thể dùng ONNX Runtime,
+                quantization (INT8), hoặc OpenVINO để tăng tốc trên CPU
+                không?</strong
+              >
+              Nếu phải chạy server-side thì kiến trúc sẽ thay đổi ra sao ạ?"
+            </div>
+            <div class="q-hint">
+              <strong>🧠 Gợi ý trả lời:</strong> Ở phạm vi đồ án, prototype
+              local là đủ. Scale cần: (1) server inference với GPU, (2) model
+              quantization (FP16/INT8), (3) ONNX Runtime tăng ~2-3× tốc độ CPU.
+              Hoặc kiến trúc client-server: client capture frame → server
+              inference trả về.
+            </div>
+          </div>
+
+          <!-- Q6 -->
+          <div class="question-card">
+            <div class="q-header">
+              <span class="q-category edu">ỨNG DỤNG</span>
+              <strong>Cảm xúc → can thiệp sư phạm: làm thế nào?</strong>
+            </div>
+            <div class="q-context">
+              <strong>Bối cảnh:</strong> Dự án lưu cảm xúc vào SQLite để "giáo
+              viên điều chỉnh bài giảng". Nhưng không có cơ chế real-time
+              intervention.
+            </div>
+            <div class="q-text">
+              "Sau khi có dữ liệu cảm xúc,
+              <strong>em nên đề xuất hành động cụ thể gì cho giáo viên?</strong>
+              Ví dụ: nếu 30% học sinh 'buồn' → tự động giảm độ khó? Tăng tương
+              tác? Hay chỉ để giáo viên xem lại sau buổi học? Và nếu AI nhận
+              nhầm 'buồn' thành 'trung tính' (false negative),
+              <strong
+                >làm sao để tránh quyết định sai lầm dựa trên dữ liệu
+                sai?</strong
+              >
+              Em nghĩ có nên thêm bước human-in-the-loop không ạ?"
+            </div>
+            <div class="q-hint">
+              <strong>🧠 Gợi ý trả lời:</strong> Hệ thống nên là công cụ hỗ trợ,
+              không thay thế giáo viên. Cần (1) dashboard real-time hiển thị
+              phân bố cảm xúc theo lớp, (2) cảnh báo khi tỷ lệ 'buồn'/'bối rối'
+              vượt ngưỡng, (3) human-in-the-loop: giáo viên xác nhận trước khi
+              hành động. Tránh can thiệp cá nhân hóa dựa trên từng học sinh.
+            </div>
+          </div>
+
+          <!-- Q7 -->
+          <div class="question-card">
+            <div class="q-header">
+              <span class="q-category edu">ỨNG DỤNG</span>
+              <strong>15 FPS — có đủ bắt micro-expression?</strong>
+            </div>
+            <div class="q-context">
+              <strong>Bối cảnh:</strong> Yêu cầu &gt;15 FPS. Micro-expression
+              (biểu cảm vi biểu) xuất hiện trong 1/25-1/5 giây (40-200ms).
+            </div>
+            <div class="q-text">
+              "Thưa cô, micro-expression — những biểu cảm cảm xúc thật, thoáng
+              qua trong 40-200ms — là ứng dụng quan trọng trong giáo dục (phát
+              hiện học sinh giấu sự bối rối). Với webcam 15 FPS (mỗi frame
+              ~67ms) và skip_frames=2 (AI xử lý mỗi ~133ms),
+              <strong
+                >hệ thống có thể bỏ lỡ hoàn toàn các micro-expression. Làm sao
+                để cải thiện? Tăng FPS lên 30? Giảm skip_frames? Hay chấp nhận
+                giới hạn của thiết bị và tập trung vào macro-expression?</strong
+              >"
+            </div>
+            <div class="q-hint">
+              <strong>🧠 Gợi ý trả lời:</strong> 15 FPS là đủ cho
+              macro-expression (cảm xúc kéo dài &gt;0.5s). Micro-expression cần
+              camera 60-120 FPS và model chuyên dụng. Trong phạm vi đồ án, focus
+              vào macro-expression là hợp lý. Có thể đề xuất: ghi lại video 720p
+              để offline processing nếu cần phân tích sâu hơn.
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <!-- SECTION 6: ĐIỂM SỐ -->
+      <div class="section" id="section6">
+        <div class="section-header">
+          <div class="section-icon purple">🏆</div>
+          <h2>VI. Điểm số & Lộ trình Cải tiến</h2>
+        </div>
+
+        <div class="score-grid">
+          <div>
+            <div class="score-circle">
+              <div class="score-circle-inner">
+                <div class="score-number">7.3</div>
+                <div class="score-label">/ 10</div>
+              </div>
+            </div>
+          </div>
+          <div class="score-details">
+            <div class="score-bar">
+              <span class="score-bar-label">Kiến trúc & Thiết kế</span>
+              <div class="score-bar-track">
+                <div class="score-bar-fill good" style="width: 85%"></div>
+              </div>
+              <span class="score-bar-val">1.7/2</span>
+            </div>
+            <div class="score-bar">
+              <span class="score-bar-label">Chất lượng Code</span>
+              <div class="score-bar-track">
+                <div class="score-bar-fill ok" style="width: 55%"></div>
+              </div>
+              <span class="score-bar-val">1.1/2</span>
+            </div>
+            <div class="score-bar">
+              <span class="score-bar-label">Đúng đắn Kỹ thuật</span>
+              <div class="score-bar-track">
+                <div class="score-bar-fill ok" style="width: 50%"></div>
+              </div>
+              <span class="score-bar-val">1.0/2</span>
+            </div>
+            <div class="score-bar">
+              <span class="score-bar-label">Tính năng & Hoàn thiện</span>
+              <div class="score-bar-track">
+                <div class="score-bar-fill ok" style="width: 65%"></div>
+              </div>
+              <span class="score-bar-val">1.3/2</span>
+            </div>
+            <div class="score-bar">
+              <span class="score-bar-label">Tài liệu & Báo cáo</span>
+              <div class="score-bar-track">
+                <div class="score-bar-fill ok" style="width: 70%"></div>
+              </div>
+              <span class="score-bar-val">1.4/2</span>
+            </div>
+            <div class="score-bar">
+              <span class="score-bar-label">Hiệu năng Thực tiễn</span>
+              <div class="score-bar-track">
+                <div class="score-bar-fill bad" style="width: 40%"></div>
+              </div>
+              <span class="score-bar-val">0.8/2</span>
+            </div>
+          </div>
+        </div>
+
+        <div style="margin-top: 24px">
+          <h3>📌 Nhận xét tổng thể</h3>
+          <div class="highlight-box info">
+            <strong>Điểm mạnh:</strong> Kiến trúc module sạch, per-face temporal
+            smoothing thông minh, tài liệu hướng dẫn chi tiết, visualization đầy
+            đủ. Đồ án chạy được và demo ổn định ở mức cơ bản.<br /><br />
+            <strong>Điểm yếu:</strong> Bug DB mất ~80% dữ liệu, báo cáo không
+            trung thực về phạm vi đóng góp, face detection cổ điển, thiếu kiểm
+            thử định lượng. Đây là <em>integration project</em> (ghép thư viện)
+            hơn là <em>research project</em> (tự phát triển thuật toán).<br /><br />
+            <strong>Kết luận:</strong> <strong>7.3/10</strong> — Một đồ án hoàn
+            chỉnh, chạy được, có đầu tư, nhưng cần fix bug DB và điều chỉnh báo
+            cáo cho trung thực hơn.
+          </div>
+        </div>
+
+        <h3>🚀 3 Ý tưởng cải tiến khả thi nhất</h3>
+        <ol style="padding-left: 20px">
+          <li>
+            <strong>Fix DB batch insert + persistent connection:</strong> Thay
+            vì mở/đóng mỗi lần, giữ connection persistent, dùng
+            <code>executemany</code> + transaction. Fix bug ghi thiếu (chỉ
+            insert 1/5 detection). Cải thiện FPS ~20-30%.
+          </li>
+          <li>
+            <strong>Thay Haar Cascade bằng YuNet/MTCNN:</strong> YuNet là model
+            deep learning nhẹ tích hợp sẵn trong OpenCV 4.8+ — chạy CPU
+            real-time (~5-8ms/face), accuracy cao hơn rõ rệt với mặt nghiêng,
+            thiếu sáng.
+          </li>
+          <li>
+            <strong>Exponential Moving Average thay vì simple mean:</strong> EMA
+            (alpha=0.5-0.7) giảm latency từ ~1.5s xuống ~0.3-0.5s mà vẫn giữ
+            được smoothness, phù hợp hơn cho real-time.
+          </li>
+        </ol>
+
+        <h3>💡 Lời khuyên trước khi bảo vệ</h3>
+        <ul class="insight-list">
+          <li class="orange">
+            <strong>1. Trung thực về phạm vi:</strong> Nếu cô hỏi về Compound
+            Scaling, hãy nói rõ: đây là kiến trúc của EfficientNet gốc (Google),
+            em dùng pre-trained model từ HSEmotion. Đừng để bị hiểu lầm là tự
+            thiết kế.
+          </li>
+          <li class="orange">
+            <strong>2. Chủ động nhận bug DB:</strong> "Em phát hiện code ghi DB
+            còn thiếu sót, chỉ insert được ~20% dữ liệu. Em đã sửa bằng cách
+            dùng transaction batch." — Thái độ trung thực được đánh giá cao.
+          </li>
+          <li class="green">
+            <strong>3. Giải thích trade-off temporal smoothing:</strong> "Em
+            chọn buffer 10 frame để lấy smoothness — phù hợp cho giáo dục vì
+            giáo viên không cần phản ứng mili-giây. Đánh đổi là latency ~1s."
+          </li>
+          <li class="green">
+            <strong>4. Chuẩn bị demo fallback:</strong> Có sẵn video
+            pre-recorded trong trường hợp webcam trực tiếp bị lỗi. Kiểm tra ánh
+            sáng và phông nền trước.
+          </li>
+          <li class="green">
+            <strong>5. Nhấn mạnh điểm sáng:</strong> Per-face temporal
+            smoothing, CLAHE preprocessing, kiến trúc module sạch — đây là những
+            thứ em tự thiết kế, không có sẵn trong thư viện.
+          </li>
+        </ul>
+      </div>
+    </div>
+
+    <div class="footer">
+      <p>
+        📚 <strong>Phân tích bởi Sinh viên EdTech năm 2</strong> — Môn: Khai
+        thác đa phương tiện
+      </p>
+      <p>🏫 Đại học Bách khoa Hà Nội · Bài tập lớn cuối kỳ · 2026</p>
+      <p style="margin-top: 8px; font-size: 12px; opacity: 0.6">
+        Tài liệu tham khảo: Tan &amp; Le, "EfficientNet: Rethinking Model
+        Scaling for CNNs" (ICML 2019) · HSEmotion: S. Ryumina et al. (2022) ·
+        Viola &amp; Jones, "Rapid Object Detection using a Boosted Cascade"
+        (CVPR 2001)
+      </p>
+    </div>
+  </body>
+</html>
