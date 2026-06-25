@@ -127,15 +127,31 @@ Thư viện HSEmotion cung cấp **3 file model đã được train sẵn** (pre
 
 **VGAF (Video-level Group AFfect)** là tập dữ liệu video về cảm xúc nhóm người — phù hợp hơn cho tình huống lớp học online có nhiều người trong khung hình.
 
-### 2.5. Tóm tắt — nên chọn model nào?
+### 2.5. Có cần dùng cả 3 model không?
+
+**Không cần.** Dùng **1 model duy nhất** là đủ cho cả dự án.
+
+Ba cái đó không phải 3 mô hình khác nhau về kiến trúc, mà chỉ là **cùng 1 mạng EfficientNet-B0 nhưng được huấn luyện trên dữ liệu khác nhau** — giống như 3 bạn học cùng một sách giáo khoa nhưng luyện ở 3 bộ đề thi khác nhau:
 
 ```
-Tình huống                          Model nên dùng
-────────────────────────────────────────────────────
-Demo real-time, cần FPS cao         enet_b0_8_best_afew  ← mặc định
-Độ chính xác ưu tiên hơn tốc độ    enet_b0_8_best_vgaf
-Phân tích video đã quay sẵn        enet_b2_8
+enet_b0_8_best_afew → luyện đề AffectNet + AFEW (đề video thực tế)
+enet_b0_8_best_vgaf → luyện đề AffectNet + VGAF (đề nhóm người)
+enet_b2_8           → luyện đề AffectNet (học kỹ hơn, lâu hơn, chính xác hơn)
 ```
+
+**Chọn model nào cho dự án này?**
+
+```
+Tình huống                           Model nên chọn
+──────────────────────────────────────────────────────────
+Demo real-time webcam (mặc định)     enet_b0_8_best_afew
+Ưu tiên độ chính xác hơn tốc độ     enet_b0_8_best_vgaf
+Phân tích video đã quay sẵn         enet_b2_8
+```
+
+**Gợi ý câu giải thích cho báo cáo** (copy và chỉnh tên nhóm):
+
+> *"Nhóm chọn `enet_b0_8_best_afew` vì model này được huấn luyện bổ sung trên tập AFEW gồm các đoạn video thực tế, phù hợp hơn với môi trường webcam học online có chuyển động và thay đổi ánh sáng liên tục. Ngoài ra đây là model nhẹ nhất trong 3 lựa chọn (EfficientNet-B0), đảm bảo chạy real-time trên CPU thông thường mà không cần GPU — phù hợp với điều kiện máy tính sinh viên."*
 
 ---
 
@@ -811,26 +827,76 @@ Giảm dần learning rate giúp model hội tụ ổn định, tránh dao độ
 
 ### 7.5. Dataset Split — Tại sao cần chia 3?
 
+Giả sử nhóm thu thập được **210 ảnh** (30 ảnh × 7 class). Chia ngay từ đầu thành 3 phần tách biệt hoàn toàn:
+
 ```
 Dataset tổng: 210 ảnh (30 ảnh × 7 class)
       │
       ├── Train set (70% = 147 ảnh)
-      │   └── Dùng để CẬP NHẬT trọng số mô hình
-      │       Model ĐƯỢC PHÉP học từ đây
+      │   └── Model ĐƯỢC PHÉP học từ đây
+      │       Trọng số được cập nhật dựa trên bộ này
+      │       Mỗi epoch duyệt qua 147 ảnh này nhiều lần
       │
       ├── Validation set (15% = 32 ảnh)
-      │   └── Kiểm tra sau mỗi epoch
-      │       Model KHÔNG được train trên đây
-      │       Dùng để chọn checkpoint tốt nhất
+      │   └── Model KHÔNG được train trên đây
+      │       Sau mỗi epoch: chạy model trên 32 ảnh này
+      │       để kiểm tra "học xong có thực sự tốt hơn không"
+      │       → Dùng để quyết định có lưu checkpoint không
       │
       └── Test set (15% = 31 ảnh)
-          └── CHỈ DÙNG MỘT LẦN DUY NHẤT
-              Sau khi train xong để đánh giá cuối
-              Đảm bảo kết quả CÔNG BẰNG
-              (Model chưa bao giờ thấy những ảnh này)
+          └── Cất kỹ, KHÔNG ĐƯỢC XEM cho đến khi train xong hẳn
+              Chỉ dùng DUY NHẤT 1 LẦN ở cuối
+              → Đây là con số accuracy chính thức trong báo cáo
 ```
 
-**Tại sao cần test set riêng?** Nếu dùng validation set để đánh giá cuối → model đã "gián tiếp" được tối ưu hóa cho val set (qua việc chọn checkpoint tốt nhất trên val). Test set độc lập hoàn toàn đảm bảo kết quả đánh giá thực sự khách quan.
+**Hình dung đơn giản:**
+- **Train set** = sách giáo khoa để học
+- **Validation set** = đề luyện tập để tự kiểm tra
+- **Test set** = đề thi thật — chỉ làm 1 lần, không được xem trước
+
+**Có cần thay test set mỗi lần test không?**
+
+Không. Test set chỉ có **1 bộ duy nhất, cố định**. Nhưng quy tắc là **không được dùng kết quả test set để ra quyết định gì**:
+
+```
+❌ SAI — Dùng test set nhiều lần để điều chỉnh:
+
+  Train xong lần 1 → test → 67% → "Chưa đủ, tăng epochs lên"
+  Train lại lần 2  → test → 71% → "Vẫn thấp, đổi learning rate"
+  Train lại lần 3  → test → 74% → "OK rồi, báo cáo 74%"
+
+  → Test set đã bị "rò rỉ" vào quá trình ra quyết định
+  → Model gián tiếp được tối ưu CHO test set
+  → Số 74% không còn đáng tin, bị phồng lên
+
+✅ ĐÚNG — Dùng val set để điều chỉnh, test set chỉ dùng 1 lần:
+
+  Train + điều chỉnh (chỉ nhìn val set)
+       │
+       │ Khi hài lòng với val accuracy rồi mới...
+       ▼
+  Chạy test set → 71% → ĐÂY LÀ CON SỐ BÁO CÁO, không chỉnh gì nữa
+```
+
+**Với BTL của nhóm — thực tế chỉ cần làm thế này:**
+
+```bash
+# 1. Thu thập ảnh
+python collect_data.py
+
+# 2. Fine-tune (code tự chia train/val/test, seed cố định = 42
+#    → mỗi lần chạy đều chia ra đúng bộ đó, không bị xáo trộn)
+python main.py --mode finetune --dataset dataset/
+
+# 3. Đánh giá 1 lần duy nhất → lấy số liệu báo cáo
+python main.py --mode evaluate --dataset dataset/ --weights models/finetuned.pt
+# → Ra accuracy + confusion matrix → chép vào báo cáo
+```
+
+Cô giáo chủ yếu quan tâm 3 điều:
+1. Nhóm **giải thích được** tại sao chia 3 phần trong báo cáo
+2. **So sánh được** accuracy model gốc vs fine-tuned
+3. **Phân tích** confusion matrix: class nào bị nhầm, tại sao
 
 ---
 
