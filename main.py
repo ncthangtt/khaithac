@@ -1,454 +1,370 @@
 """
 ==================================================
 FILE: main.py
-Chức năng: File chính - Tích hợp toàn bộ hệ thống
-Mô tả: Nhận dạng cảm xúc người học online real-time
+Chức năng: Entry point — 4 chế độ chạy
+Mô tả: Nhận dạng cảm xúc người học online
 Đại học Bách khoa Hà Nội
 ==================================================
+
+CÁCH DÙNG:
+  python main.py --mode webcam
+  python main.py --mode image   --input face.jpg
+  python main.py --mode finetune --dataset dataset/
+  python main.py --mode evaluate --dataset dataset/
+
+  Thêm --weights models/finetuned.pt để dùng model fine-tuned (webcam & image)
+  Thêm --help để xem đầy đủ tùy chọn
 """
 
 import sys
 import os
 sys.path.append(os.path.dirname(__file__))
 
-from src.capture import CameraCapture
-from src.emotion_engine import EmotionEngine
-from src.database import EmotionDatabase
-from src.analytics import EmotionAnalytics
-from datetime import datetime
+import argparse
 import time
+from datetime import datetime
 
 
-class EmotionDetectionSystem:
-    """
-    Hệ thống nhận dạng cảm xúc người học online
+# ══════════════════════════════════════════════════
+#  HEADER
+# ══════════════════════════════════════════════════
 
-    Chức năng chính:
-    - Capture video từ webcam
-    - Nhận dạng cảm xúc real-time
-    - Lưu dữ liệu vào SQLite database
-    - Tạo biểu đồ thống kê
-    """
+def print_header(mode: str):
+    print("=" * 60)
+    print("  HỆ THỐNG NHẬN DẠNG CẢM XÚC NGƯỜI HỌC ONLINE")
+    print("  Đại học Bách khoa Hà Nội")
+    print("=" * 60)
+    print(f"  Chế độ : {mode.upper()}")
+    print(f"  Thời điểm: {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}")
+    print("=" * 60 + "\n")
 
-    def __init__(self, model_name: str = 'enet_b0_8_best_afew',
-                 camera_id: int = 0,
-                 db_path: str = "data/emotions.db"):
-        """
-        Khởi tạo hệ thống
 
-        Args:
-            model_name: Tên mô hình HSEmotion
-            camera_id: ID camera (0 = webcam mặc định)
-            db_path: Đường dẫn database
-        """
-        print("="*60)
-        print("HỆ THỐNG NHẬN DẠNG CẢM XÚC NGƯỜI HỌC ONLINE")
-        print("Đại học Bách khoa Hà Nội")
-        print("="*60)
+# ══════════════════════════════════════════════════
+#  MODE 1: WEBCAM — nhận diện real-time
+# ══════════════════════════════════════════════════
 
-        # Tạo session ID (timestamp)
-        self.session_id = datetime.now().strftime("%Y%m%d_%H%M%S")
-        print(f"\n📝 Session ID: {self.session_id}")
+def run_webcam(args):
+    """Nhận diện cảm xúc real-time từ webcam."""
+    from src.capture import CameraCapture
+    from src.emotion_engine import EmotionEngine
 
-        # Khởi tạo các modules
-        print("\n⏳ Đang khởi tạo hệ thống...\n")
+    print_header("WEBCAM")
 
-        print("1️⃣ Khởi tạo Camera...")
-        self.camera = CameraCapture(camera_id=camera_id)
+    camera = CameraCapture(camera_id=args.camera)
+    engine = EmotionEngine(model_name=args.model, weights_path=args.weights)
 
-        print("\n2️⃣ Khởi tạo Emotion Engine...")
-        self.engine = EmotionEngine(model_name=model_name)
+    if not camera.open_camera():
+        print("❌ Không thể mở camera. Kết thúc.")
+        return
 
-        print("\n3️⃣ Khởi tạo Database...")
-        self.database = EmotionDatabase(db_path=db_path)
+    print("\n⌨️  Phím điều khiển:")
+    print("  • q / ESC  : Thoát")
+    print("  • s        : Chụp ảnh màn hình")
+    print("  • r        : Reset temporal smoothing buffer")
+    print("\n⏳ Đang xử lý...\n")
 
-        print("\n4️⃣ Khởi tạo Analytics...")
-        self.analytics = EmotionAnalytics(output_dir="reports")
+    frame_count = 0
+    skip_frames = 2
+    last_results = []
+    start_time = time.time()
 
-        print("\n✅ Hệ thống đã sẵn sàng!\n")
-
-        # Biến theo dõi
-        self.frame_count = 0
-        self.emotion_buffer = []  # Lưu tạm dữ liệu trong RAM
-        self.db_saved_count = 0   # Số bản ghi đã được lưu vào DB trong vòng lặp
-        self.start_time = None
-        self.is_running = False
-
-        # Cache kết quả nhận diện để tái sử dụng trên frame bị skip
-        self.last_results = []  # Kết quả nhận diện của frame trước
-        self.last_frame_drawn = None  # Frame đã vẽ overlay của lần xử lý trước
-
-    def start(self):
-        """
-        Bắt đầu chương trình chính
-        """
-        # Mở camera
-        if not self.camera.open_camera():
-            print("❌ Không thể mở camera. Kết thúc chương trình.")
-            return
-
-        print("\n" + "="*60)
-        print("BẮT ĐẦU NHẬN DẠNG CẢM XÚC")
-        print("="*60)
-        print("\n📹 Webcam đã mở")
-        print("\n⌨️  PHÍM ĐIỀU KHIỂN:")
-        print("  • Nhấn 'q' hoặc 'ESC' để thoát")
-        print("  • Nhấn 's' để chụp ảnh màn hình")
-        print("  • Nhấn 'r' để reset dữ liệu session hiện tại")
-        print("\n⏱️  Đang xử lý...\n")
-
-        self.start_time = time.time()
-        self.is_running = True
-
-        try:
-            self._main_loop()
-        except KeyboardInterrupt:
-            print("\n\n⚠️ Người dùng nhấn Ctrl+C")
-        except Exception as e:
-            print(f"\n\n❌ Lỗi: {e}")
-            import traceback
-            traceback.print_exc()
-        finally:
-            self._cleanup()
-
-    def _draw_overlays(self, frame, results):
-        """
-        Vẽ toàn bộ overlay (emotion box + info text) lên frame.
-        Tách riêng để tái sử dụng trên cả frame xử lý lẫn frame bị skip.
-
-        Args:
-            frame: Khung hình gốc
-            results: Danh sách kết quả nhận diện từ engine
-
-        Returns:
-            Khung hình đã vẽ đầy đủ overlay
-        """
-        # Vẽ bounding box và emotion label cho từng khuôn mặt
-        for result in results:
-            frame = self.camera.draw_emotion_box(
-                frame,
-                result['emotion'],
-                result['confidence'],
-                result['bbox']
-            )
-
-        # Tính FPS
-        elapsed_time = time.time() - self.start_time
-        fps = self.frame_count / elapsed_time if elapsed_time > 0 else 0
-
-        # Vẽ thông tin hệ thống góc trên trái
-        info_text = [
-            f"Session: {self.session_id}",
-            f"Frame: {self.frame_count}",
-            f"FPS: {fps:.1f}",
-            f"Faces: {len(results)}",
-            f"Samples: {len(self.emotion_buffer)}"
-        ]
-        y_offset = 30
-        for i, text in enumerate(info_text):
-            frame = self.camera.draw_text(
-                frame, text,
-                position=(10, y_offset + i * 25),
-                font_scale=0.6,
-                color=(0, 255, 255),
-                thickness=2
-            )
-
-        # Vẽ hướng dẫn góc dưới
-        frame = self.camera.draw_text(
-            frame, "Nhan 'q' de thoat, 's' de chup anh",
-            position=(10, frame.shape[0] - 20),
-            font_scale=0.5,
-            color=(255, 255, 255),
-            thickness=1
-        )
-
-        return frame
-
-    def _main_loop(self):
-        """
-        Vòng lặp chính xử lý video
-        """
-        skip_frames = 2  # Xử lý AI mỗi 2 frame để tăng tốc
-
-        while self.is_running:
-            # Đọc frame
-            ret, frame = self.camera.read_frame()
+    try:
+        while True:
+            ret, frame = camera.read_frame()
             if not ret:
-                print("\n❌ Không thể đọc frame. Kết thúc.")
                 break
 
-            self.frame_count += 1
+            frame_count += 1
 
-            # ── Frame bị SKIP: vẽ lại kết quả nhận diện của frame TRƯỚC ──
-            # Giúp hiển thị mượt mà, không giật, không bị nhấp nháy box
-            if self.frame_count % skip_frames != 0:
-                display_frame = self._draw_overlays(frame, self.last_results)
-                self.camera.show_frame(display_frame, "Emotion Detection - HUST")
-                key_result = self._handle_key_press(display_frame)
-                if key_result == 'quit':
+            # Frame bị skip: vẽ lại kết quả cũ để tránh giật
+            if frame_count % skip_frames != 0:
+                display = _draw_webcam_overlay(frame, last_results, frame_count, start_time)
+                camera.show_frame(display, "Emotion Detection — HUST")
+                if _handle_key(camera, display, engine) == 'quit':
                     break
                 continue
 
-            # ── Frame được XỬ LÝ: chạy AI nhận diện cảm xúc ──
-            results = self.engine.process_frame(frame)
+            # Frame xử lý AI
+            results = engine.process_frame(frame)
+            last_results = results
 
-            # Cập nhật cache kết quả mới nhất
-            self.last_results = results
+            display = _draw_webcam_overlay(frame, results, frame_count, start_time)
+            camera.show_frame(display, "Emotion Detection — HUST")
 
-            # Lưu dữ liệu vào buffer và database
-            for result in results:
-                self.emotion_buffer.append({
-                    'timestamp': datetime.now().isoformat(),
-                    'emotion': result['emotion'],
-                    'confidence': result['confidence']
-                })
-
-                # Lưu vào database theo batch (mỗi 5 detection)
-                if len(self.emotion_buffer) % 5 == 0:
-                    self.database.insert_emotion(
-                        result['emotion'],
-                        result['confidence'],
-                        self.session_id
-                    )
-                    self.db_saved_count += 1
-
-            # Vẽ overlay và hiển thị
-            display_frame = self._draw_overlays(frame, results)
-            self.camera.show_frame(display_frame, "Emotion Detection - HUST")
-
-            # Xử lý phím bấm
-            if self._handle_key_press(display_frame) == 'quit':
+            if _handle_key(camera, display, engine) == 'quit':
                 break
 
-        self.is_running = False
-
-    def _handle_key_press(self, current_frame=None):
-        """
-        Xử lý phím bấm
-
-        Args:
-            current_frame: Frame đang hiển thị (dùng để lưu screenshot)
-
-        Returns:
-            'quit' nếu cần thoát, None nếu tiếp tục
-        """
-        key = self.camera.wait_key(1)
-
-        # Phím 'q' hoặc ESC để thoát
-        if key == ord('q') or key == 27:
-            print("\n✓ Người dùng yêu cầu thoát.")
-            return 'quit'
-
-        # Phím 's' để screenshot — lưu đúng frame đang hiển thị (có overlay)
-        elif key == ord('s'):
-            timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
-            filename = f"data/screenshot_{timestamp}.jpg"
-            import cv2
-            save_frame = current_frame if current_frame is not None else None
-            if save_frame is not None:
-                cv2.imwrite(filename, save_frame)
-                print(f"✓ Đã lưu ảnh: {filename}")
-            else:
-                print("⚠️ Không có frame để lưu")
-
-        # Phím 'r' để reset
-        elif key == ord('r'):
-            print("\n⚠️ Reset dữ liệu session...")
-            self.emotion_buffer.clear()
-            self.last_results = []  # Xóa cache kết quả
-            print("✓ Đã xóa buffer")
-
-        return None
-
-    def _cleanup(self):
-        """
-        Dọn dẹp và tạo báo cáo khi kết thúc
-        """
-        print("\n\n" + "="*60)
-        print("KẾT THÚC PHIÊN HỌC")
-        print("="*60)
-
-        # Đóng camera
-        print("\n🔒 Đang đóng camera...")
-        self.camera.release_camera()
-        self.camera.destroy_all_windows()
-
-        # Thống kê tổng quan
-        elapsed_time = time.time() - self.start_time
-        total_samples = len(self.emotion_buffer)
-
-        print(f"\n📊 THỐNG KÊ:")
-        print(f"  • Thời gian chạy: {elapsed_time:.1f} giây")
-        print(f"  • Tổng số frame: {self.frame_count}")
-        print(f"  • Tổng số mẫu cảm xúc: {total_samples}")
-
-        if total_samples == 0:
-            print("\n⚠️ Không có dữ liệu để tạo báo cáo.")
-            return
-
-        # Chỉ lưu phần dữ liệu CHƯA được lưu trong vòng lặp
-        # (tránh ghi trùng toàn bộ buffer)
-        already_saved = self.db_saved_count  # mỗi lần ghi = 1 bản ghi (ghi từng cái)
-        # Tính số bận ghi thực tế đã vào DB: mỗi lần emotion_buffer % 5 == 0 thì gọi insert 1 lần
-        # = tổng số lần buffer chia hết cho 5 = len(buffer) // 5
-        db_written_in_loop = (len(self.emotion_buffer) // 5)
-        unsaved_items = self.emotion_buffer[db_written_in_loop * 5:]
-
-        print("\n💾 Đang lưu dữ liệu còn lại vào database...")
-        saved_now = 0
-        for item in unsaved_items:
-            self.database.insert_emotion(
-                item['emotion'],
-                item['confidence'],
-                self.session_id
-            )
-            saved_now += 1
-        print(f"✓ Đã lưu thêm {saved_now} bản ghi (tổng: {db_written_in_loop + saved_now}/{total_samples})")
-
-        # Lấy thống kê từ database
-        print("\n📈 Đang tạo báo cáo thống kê...")
-        emotion_counts = self.database.get_emotion_counts(self.session_id)
-        avg_confidence = self.database.get_average_confidence(self.session_id)
-
-        # In kết quả ra console
-        total_from_db = sum(emotion_counts.values())  # Dùng tổng từ DB để tính %
-        print("\n🎭 PHÂN TÍCH CẢM XÚC:")
-        for emotion, count in sorted(emotion_counts.items(), key=lambda x: x[1], reverse=True):
-            percentage = (count / total_from_db) * 100 if total_from_db > 0 else 0
-            conf = avg_confidence.get(emotion, 0.0)
-            print(f"  • {emotion:12s}: {count:4d} lần ({percentage:5.1f}%) - Độ tin cậy: {conf:.2f}")
-
-        # Tạo biểu đồ
-        print("\n📊 Đang tạo biểu đồ...")
-        try:
-            # Biểu đồ số lượng
-            self.analytics.plot_emotion_counts(emotion_counts, self.session_id)
-
-            # Biểu đồ tròn
-            self.analytics.plot_emotion_pie(emotion_counts, self.session_id)
-
-            # Biểu đồ timeline (nếu có đủ dữ liệu)
-            if len(self.emotion_buffer) > 10:
-                self.analytics.plot_emotion_timeline(self.emotion_buffer, self.session_id)
-
-            # Báo cáo tổng hợp
-            self.analytics.generate_summary_report(emotion_counts, avg_confidence, self.session_id)
-
-            print("✓ Đã tạo tất cả biểu đồ thành công!")
-            print(f"✓ Kiểm tra thư mục 'reports/' để xem kết quả")
-
-        except Exception as e:
-            print(f"⚠️ Lỗi khi tạo biểu đồ: {e}")
-
-        # Cảm xúc chủ đạo
-        dominant_emotion = max(emotion_counts.items(), key=lambda x: x[1])[0]
-        print(f"\n🏆 Cảm xúc chủ đạo: {dominant_emotion}")
-
-        print("\n" + "="*60)
-        print("CẢM ƠN BẠN ĐÃ SỬ DỤNG HỆ THỐNG!")
-        print("="*60 + "\n")
+    except KeyboardInterrupt:
+        print("\n⚠️  Ngắt bởi người dùng (Ctrl+C)")
+    finally:
+        camera.release_camera()
+        camera.destroy_all_windows()
+        elapsed = time.time() - start_time
+        fps = frame_count / elapsed if elapsed > 0 else 0
+        print(f"\n✓ Kết thúc | {frame_count} frames | {elapsed:.1f}s | {fps:.1f} FPS")
 
 
-def print_help():
-    """
-    In hướng dẫn sử dụng
-    """
-    help_text = """
-    ╔══════════════════════════════════════════════════════════════╗
-    ║  HỆ THỐNG NHẬN DẠNG CẢM XÚC NGƯỜI HỌC ONLINE                ║
-    ║  Đại học Bách khoa Hà Nội                                    ║
-    ╚══════════════════════════════════════════════════════════════╝
+def _draw_webcam_overlay(frame, results, frame_count, start_time):
+    """Vẽ emotion box + info text lên frame."""
+    import cv2
+    import time
 
-    CÁCH CHẠY CHƯƠNG TRÌNH:
-    ----------------------
-    python main.py [options]
+    display = frame.copy()
 
-    OPTIONS:
-    --------
-    --model <name>     : Chọn mô hình HSEmotion
-                         • enet_b0_8_best_afew (mặc định - nhanh)
-                         • enet_b0_8_best_vgaf (chính xác hơn)
-                         • enet_b2_8 (chính xác nhất - chậm)
+    COLOR_MAP = {
+        'Happy': (0,255,0), 'Sad': (255,80,80), 'Angry': (0,0,255),
+        'Surprise': (0,165,255), 'Neutral': (180,180,180),
+        'Fear': (180,0,180), 'Disgust': (0,160,160),
+    }
 
-    --camera <id>      : Chọn camera ID (mặc định: 0)
+    for result in results:
+        x, y, w, h = result['bbox']
+        emotion = result['emotion']
+        confidence = result['confidence']
+        color = COLOR_MAP.get(emotion, (255,255,255))
 
-    --db <path>        : Đường dẫn database (mặc định: data/emotions.db)
+        cv2.rectangle(display, (x, y), (x+w, y+h), color, 2)
+        label = f"{emotion}: {confidence:.0%}"
+        (lw, lh), _ = cv2.getTextSize(label, cv2.FONT_HERSHEY_SIMPLEX, 0.65, 2)
+        cv2.rectangle(display, (x, y-lh-10), (x+lw+6, y), color, -1)
+        cv2.putText(display, label, (x+3, y-5),
+                    cv2.FONT_HERSHEY_SIMPLEX, 0.65, (0,0,0), 2)
 
-    --help             : Hiển thị hướng dẫn này
+    # Info overlay góc trên trái
+    elapsed = time.time() - start_time
+    fps = frame_count / elapsed if elapsed > 0 else 0
+    info = [
+        f"Frame: {frame_count}",
+        f"FPS:   {fps:.1f}",
+        f"Faces: {len(results)}",
+    ]
+    for i, txt in enumerate(info):
+        cv2.putText(display, txt, (10, 30 + i*25),
+                    cv2.FONT_HERSHEY_SIMPLEX, 0.6, (0,255,255), 2)
 
-    VÍ DỤ:
-    ------
-    python main.py
-    python main.py --model enet_b2_8
-    python main.py --camera 1
-    python main.py --model enet_b0_8_best_vgaf --camera 0
+    # Hướng dẫn góc dưới
+    cv2.putText(display, "q: thoat | s: chup anh | r: reset",
+                (10, display.shape[0]-12),
+                cv2.FONT_HERSHEY_SIMPLEX, 0.45, (200,200,200), 1)
 
-    PHÍM TẮT KHI CHẠY:
-    ------------------
-    • 'q' hoặc ESC : Thoát chương trình
-    • 's'          : Chụp ảnh màn hình
-    • 'r'          : Reset dữ liệu session
-
-    YÊU CẦU HỆ THỐNG:
-    -----------------
-    • Python 3.8+
-    • Webcam
-    • Các thư viện: opencv-python, hsemotion, torch, matplotlib, seaborn
-
-    CÀI ĐẶT THƯ VIỆN:
-    -----------------
-    py -m pip install -r requirements.txt
-
-    """
-    print(help_text)
+    return display
 
 
-def main():
-    """
-    Hàm main - Entry point của chương trình
-    """
-    import argparse
+def _handle_key(camera, current_frame, engine):
+    """Xử lý phím bấm. Trả về 'quit' nếu cần thoát."""
+    import cv2
+    key = camera.wait_key(1)
+    if key in (ord('q'), 27):
+        print("\n✓ Người dùng yêu cầu thoát.")
+        return 'quit'
+    elif key == ord('s'):
+        ts = datetime.now().strftime("%Y%m%d_%H%M%S")
+        path = f"data/screenshot_{ts}.jpg"
+        os.makedirs('data', exist_ok=True)
+        cv2.imwrite(path, current_frame)
+        print(f"✓ Đã lưu ảnh: {path}")
+    elif key == ord('r'):
+        engine.face_buffers.clear()
+        print("✓ Đã reset temporal smoothing buffer.")
+    return None
 
-    # Parse arguments
-    parser = argparse.ArgumentParser(
-        description='Hệ thống nhận dạng cảm xúc người học online',
-        add_help=False
-    )
-    parser.add_argument('--model', type=str, default='enet_b0_8_best_afew',
-                       help='Tên mô hình HSEmotion')
-    parser.add_argument('--camera', type=int, default=0,
-                       help='Camera ID (0 = mặc định)')
-    parser.add_argument('--db', type=str, default='data/emotions.db',
-                       help='Đường dẫn database')
-    parser.add_argument('--help', action='store_true',
-                       help='Hiển thị hướng dẫn')
 
-    args = parser.parse_args()
+# ══════════════════════════════════════════════════
+#  MODE 2: IMAGE — nhận diện từ ảnh tĩnh
+# ══════════════════════════════════════════════════
 
-    # Hiển thị help nếu được yêu cầu
-    if args.help:
-        print_help()
+def run_image(args):
+    """Nhận diện cảm xúc từ file ảnh."""
+    from src.image_predictor import ImagePredictor
+
+    print_header("IMAGE")
+
+    if not args.input:
+        print("❌ Cần cung cấp đường dẫn ảnh: --input <path>")
         return
 
-    # Tạo hệ thống
+    predictor = ImagePredictor(
+        model_name=args.model,
+        weights_path=args.weights
+    )
+    predictor.predict(
+        image_path=args.input,
+        output_path=args.output,
+        show=True
+    )
+
+
+# ══════════════════════════════════════════════════
+#  MODE 3: FINETUNE — fine-tune trên dataset
+# ══════════════════════════════════════════════════
+
+def run_finetune(args):
+    """Fine-tune model trên dataset tự thu thập."""
+    from src.fine_tuner import EmotionFineTuner
+
+    print_header("FINE-TUNE")
+
+    if not args.dataset:
+        print("❌ Cần cung cấp đường dẫn dataset: --dataset <path>")
+        return
+
+    tuner = EmotionFineTuner(model_name=args.model)
+    tuner.load_dataset(
+        dataset_dir=args.dataset,
+        batch_size=args.batch_size
+    )
+    history = tuner.train(
+        epochs=args.epochs,
+        lr=args.lr,
+        save_path=args.save_weights
+    )
+
+    print(f"\n💡 Bước tiếp theo:")
+    print(f"   Đánh giá: python main.py --mode evaluate --dataset {args.dataset}")
+    print(f"   Demo:     python main.py --mode webcam --weights {args.save_weights}")
+
+
+# ══════════════════════════════════════════════════
+#  MODE 4: EVALUATE — đánh giá & so sánh model
+# ══════════════════════════════════════════════════
+
+def run_evaluate(args):
+    """Đánh giá và so sánh model gốc vs fine-tuned trên test set."""
+    from src.fine_tuner import EmotionFineTuner
+    from src.evaluator import ModelEvaluator
+    from hsemotion.facial_emotions import HSEmotionRecognizer
+    import torch
+
+    print_header("EVALUATE")
+
+    if not args.dataset:
+        print("❌ Cần cung cấp đường dẫn dataset: --dataset <path>")
+        return
+
+    weights_path = args.weights or args.save_weights
+    if not os.path.isfile(weights_path):
+        print(f"❌ Không tìm thấy file fine-tuned weights: {weights_path}")
+        print(f"   Chạy fine-tune trước: python main.py --mode finetune --dataset {args.dataset}")
+        return
+
+    # Load dataset (chỉ dùng test set)
+    print("⏳ Đang load dataset...")
+    tuner = EmotionFineTuner(model_name=args.model)
+    tuner.load_dataset(dataset_dir=args.dataset, batch_size=args.batch_size)
+    test_loader, class_names = tuner.test_data
+
+    device = 'cuda' if torch.cuda.is_available() else 'cpu'
+
+    # Model gốc
+    print("\n⏳ Đang load model gốc...")
+    original_recognizer = HSEmotionRecognizer(model_name=args.model)
+    original_model = original_recognizer.model.to(device)
+
+    # Model fine-tuned
+    print("⏳ Đang load model fine-tuned...")
+    checkpoint = torch.load(weights_path, map_location=device)
+    finetuned_model = HSEmotionRecognizer(model_name=args.model).model.to(device)
+    finetuned_model.load_state_dict(checkpoint['model_state_dict'], strict=False)
+
+    # Đánh giá
+    evaluator = ModelEvaluator(class_names=class_names, output_dir='reports')
+
+    # Đọc history nếu tồn tại (được lưu từ fine-tune)
+    history_path = weights_path.replace('.pt', '_history.npy')
+    history = None
+    if os.path.isfile(history_path):
+        import numpy as np
+        history = np.load(history_path, allow_pickle=True).item()
+
+    evaluator.evaluate_and_compare(
+        original_model=original_model,
+        finetuned_model=finetuned_model,
+        test_loader=test_loader,
+        history=history
+    )
+
+    print(f"\n✓ Kết quả đã lưu vào thư mục: reports/")
+
+
+# ══════════════════════════════════════════════════
+#  ARGUMENT PARSER
+# ══════════════════════════════════════════════════
+
+def build_parser() -> argparse.ArgumentParser:
+    parser = argparse.ArgumentParser(
+        description='Hệ thống nhận dạng cảm xúc người học online — HUST',
+        formatter_class=argparse.RawTextHelpFormatter,
+        epilog="""
+Ví dụ:
+  python main.py --mode webcam
+  python main.py --mode image --input face.jpg
+  python main.py --mode finetune --dataset dataset/ --epochs 15
+  python main.py --mode evaluate --dataset dataset/
+  python main.py --mode webcam --weights models/finetuned.pt
+        """
+    )
+
+    parser.add_argument('--mode', type=str, default='webcam',
+                        choices=['webcam', 'image', 'finetune', 'evaluate'],
+                        help='Chế độ chạy (mặc định: webcam)')
+
+    # Model
+    parser.add_argument('--model', type=str, default='enet_b0_8_best_afew',
+                        choices=['enet_b0_8_best_afew', 'enet_b0_8_best_vgaf', 'enet_b2_8'],
+                        help='Tên model HSEmotion base')
+    parser.add_argument('--weights', type=str, default=None,
+                        help='Đường dẫn fine-tuned weights .pt (webcam & image)')
+
+    # Webcam
+    parser.add_argument('--camera', type=int, default=0,
+                        help='ID camera (mặc định: 0)')
+
+    # Image mode
+    parser.add_argument('--input', type=str, default=None,
+                        help='Đường dẫn ảnh đầu vào (mode image)')
+    parser.add_argument('--output', type=str, default=None,
+                        help='Lưu ảnh kết quả vào file này (mode image)')
+
+    # Fine-tune / Evaluate
+    parser.add_argument('--dataset', type=str, default=None,
+                        help='Thư mục dataset (mode finetune & evaluate)')
+    parser.add_argument('--epochs', type=int, default=15,
+                        help='Số epoch fine-tune (mặc định: 15)')
+    parser.add_argument('--lr', type=float, default=1e-4,
+                        help='Learning rate (mặc định: 1e-4)')
+    parser.add_argument('--batch-size', type=int, default=16, dest='batch_size',
+                        help='Batch size (mặc định: 16)')
+    parser.add_argument('--save-weights', type=str, default='models/finetuned.pt',
+                        dest='save_weights',
+                        help='Đường dẫn lưu model fine-tuned (mặc định: models/finetuned.pt)')
+
+    return parser
+
+
+# ══════════════════════════════════════════════════
+#  MAIN
+# ══════════════════════════════════════════════════
+
+def main():
+    parser = build_parser()
+    args = parser.parse_args()
+
+    dispatch = {
+        'webcam':   run_webcam,
+        'image':    run_image,
+        'finetune': run_finetune,
+        'evaluate': run_evaluate,
+    }
+
     try:
-        system = EmotionDetectionSystem(
-            model_name=args.model,
-            camera_id=args.camera,
-            db_path=args.db
-        )
-
-        # Chạy hệ thống
-        system.start()
-
+        dispatch[args.mode](args)
     except KeyboardInterrupt:
-        print("\n\n⚠️ Chương trình bị ngắt bởi người dùng")
+        print("\n\n⚠️  Chương trình bị ngắt bởi người dùng.")
     except Exception as e:
-        print(f"\n\n❌ Lỗi nghiêm trọng: {e}")
+        print(f"\n\n❌ Lỗi: {e}")
         import traceback
         traceback.print_exc()
 
 
-if __name__ == "__main__":
+if __name__ == '__main__':
     main()

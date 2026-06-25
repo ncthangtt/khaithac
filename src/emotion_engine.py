@@ -2,13 +2,15 @@
 ==================================================
 MODULE: emotion_engine.py
 Chức năng: Nhận dạng cảm xúc bằng HSEmotion
-Mô tả: Sử dụng EfficientNet từ thư viện HSEmotion
+Mô tả: Sử dụng EfficientNet từ thư viện HSEmotion.
+        Hỗ trợ load fine-tuned weights tùy chỉnh.
 Đại học Bách khoa Hà Nội
 ==================================================
 """
 
 import cv2
 import numpy as np
+import torch
 from hsemotion.facial_emotions import HSEmotionRecognizer
 from collections import deque
 from typing import Tuple, List, Optional, Dict
@@ -24,9 +26,14 @@ class EmotionEngine:
     - Adaptive Thresholding: Ngưỡng tin cậy riêng cho từng loại cảm xúc.
     """
 
-    def __init__(self, model_name: str = 'enet_b0_8_best_afew'):
+    def __init__(self, model_name: str = 'enet_b0_8_best_afew',
+                 weights_path: str = None):
         """
-        Khởi tạo Emotion Engine nâng cao
+        Khởi tạo Emotion Engine
+
+        Args:
+            model_name:   Tên model HSEmotion làm base
+            weights_path: Đường dẫn file .pt fine-tuned (None = dùng model gốc)
         """
         self.model_name = model_name
         self.emotion_recognizer = HSEmotionRecognizer(model_name=model_name)
@@ -35,9 +42,13 @@ class EmotionEngine:
 
         # Danh sách các cảm xúc (theo thứ tự output của mô hình 8 lớp)
         self.emotion_labels = [
-            'Anger', 'Contempt', 'Disgust', 'Fear', 
+            'Anger', 'Contempt', 'Disgust', 'Fear',
             'Happiness', 'Neutral', 'Sadness', 'Surprise'
         ]
+
+        # Load fine-tuned weights nếu được cung cấp
+        if weights_path is not None:
+            self._load_finetuned_weights(weights_path)
 
         # 1. Temporal Smoothing: Mỗi khuôn mặt có buffer riêng để tránh trộn lẫn dữ liệu
         #    Key = (cx, cy) — tâm khuôn mặt được lượng tử hóa vào lưới 60px
@@ -47,9 +58,9 @@ class EmotionEngine:
 
         # 2. Adaptive Thresholds: Ngưỡng riêng cho từng cảm xúc để tăng độ nhạy
         self.thresholds = {
-            'Happiness': 0.50,  # Cao hơn để tránh nhận nhầm khi nói chuyện
-            'Sadness': 0.30,    # Thấp hơn để nhạy với các biểu cảm buồn nhẹ
-            'Surprise': 0.35,   # Thấp hơn để bắt kịp khoảnh khắc ngạc nhiên nhanh
+            'Happiness': 0.50,
+            'Sadness': 0.30,
+            'Surprise': 0.35,
             'Anger': 0.40,
             'Neutral': 0.35
         }
@@ -57,7 +68,32 @@ class EmotionEngine:
         # 3. CLAHE: Bộ cân bằng ánh sáng thích nghi
         self.clahe = cv2.createCLAHE(clipLimit=2.0, tileGridSize=(8, 8))
 
-        print(f"✓ EmotionEngine đã nâng cấp với Per-Face Temporal Smoothing & CLAHE (Model: {model_name})")
+        mode = f"Fine-tuned ({weights_path})" if weights_path else "Pretrained gốc"
+        print(f"✓ EmotionEngine sẵn sàng | Model: {model_name} | Weights: {mode}")
+
+    def _load_finetuned_weights(self, weights_path: str):
+        """
+        Load fine-tuned weights vào model hiện tại.
+
+        Args:
+            weights_path: Đường dẫn file .pt được lưu bởi fine_tuner.py
+        """
+        import os
+        if not os.path.isfile(weights_path):
+            print(f"⚠️  Không tìm thấy file weights: {weights_path}")
+            print("   Tiếp tục với model gốc (pretrained).")
+            return
+
+        device = 'cuda' if torch.cuda.is_available() else 'cpu'
+        checkpoint = torch.load(weights_path, map_location=device)
+        self.emotion_recognizer.model.load_state_dict(
+            checkpoint['model_state_dict'], strict=False
+        )
+        self.emotion_recognizer.model.to(device)
+        val_acc = checkpoint.get('val_acc', 0)
+        epoch = checkpoint.get('epoch', '?')
+        print(f"✓ Đã load fine-tuned weights: {weights_path}")
+        print(f"  (Epoch {epoch} | Val accuracy: {val_acc:.1f}%)")
 
     def _preprocess_face(self, face_img: np.ndarray) -> np.ndarray:
         """

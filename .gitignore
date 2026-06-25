@@ -33,10 +33,19 @@ reports/
 Thumbs.db
 desktop.ini
 
-# Model cache (tải về tự động, rất nặng)
-*.pt
-*.pth
+# Model weights (rất nặng, không push lên git)
+models/*.pt
+models/*.pth
 .hsemotion/
+
+# Dataset ảnh (do nhóm tự thu thập, không push lên git)
+dataset/Anger/
+dataset/Disgust/
+dataset/Fear/
+dataset/Happiness/
+dataset/Neutral/
+dataset/Sadness/
+dataset/Surprise/
 
 # Node (nếu có)
 node_modules/
