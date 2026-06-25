@@ -40,7 +40,12 @@ class CameraCapture:
         Returns:
             True nếu mở thành công, False nếu thất bại
         """
-        self.cap = cv2.VideoCapture(self.camera_id)
+        # Thử DirectShow trước (ổn định hơn MSMF trên Windows)
+        self.cap = cv2.VideoCapture(self.camera_id, cv2.CAP_DSHOW)
+
+        if not self.cap.isOpened():
+            # Fallback: thử backend mặc định
+            self.cap = cv2.VideoCapture(self.camera_id)
 
         if not self.cap.isOpened():
             print(f"❌ KHÔNG THỂ MỞ CAMERA ID: {self.camera_id}")

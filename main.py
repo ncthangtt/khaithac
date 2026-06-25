@@ -195,7 +195,157 @@ def run_image(args):
 
 
 # ══════════════════════════════════════════════════
-#  MODE 3: FINETUNE — fine-tune trên dataset
+#  MODE 3: VIDEO — nhận diện từ file video
+# ══════════════════════════════════════════════════
+
+def run_video(args):
+    """Nhận diện cảm xúc từ file video (.mp4, .avi, .mov, ...)."""
+    import cv2
+    from src.emotion_engine import EmotionEngine
+
+    print_header("VIDEO")
+
+    if not args.input:
+        print("❌ Cần cung cấp đường dẫn video: --input <path>")
+        return
+
+    if not os.path.isfile(args.input):
+        print(f"❌ Không tìm thấy file: {args.input}")
+        return
+
+    engine = EmotionEngine(model_name=args.model, weights_path=args.weights)
+
+    cap = cv2.VideoCapture(args.input)
+    if not cap.isOpened():
+        print(f"❌ Không thể mở video: {args.input}")
+        return
+
+    total_frames = int(cap.get(cv2.CAP_PROP_FRAME_COUNT))
+    fps_src      = cap.get(cv2.CAP_PROP_FPS) or 25.0
+    width        = int(cap.get(cv2.CAP_PROP_FRAME_WIDTH))
+    height       = int(cap.get(cv2.CAP_PROP_FRAME_HEIGHT))
+    duration     = total_frames / fps_src if fps_src > 0 else 0
+
+    print(f"\n🎬 Video: {args.input}")
+    print(f"   Độ phân giải : {width}x{height} | FPS gốc: {fps_src:.1f}")
+    print(f"   Tổng số frame: {total_frames} (~{duration:.1f} giây)")
+
+    # Khởi tạo VideoWriter nếu cần lưu video kết quả
+    writer = None
+    if args.output:
+        os.makedirs(os.path.dirname(args.output) if os.path.dirname(args.output) else '.', exist_ok=True)
+        fourcc = cv2.VideoWriter_fourcc(*'mp4v')
+        writer = cv2.VideoWriter(args.output, fourcc, fps_src, (width, height))
+        print(f"   Lưu kết quả : {args.output}")
+
+    print(f"\n⏳ Đang xử lý...")
+    print(f"  q / ESC : Dừng  |  SPACE : Tạm dừng/Tiếp tục\n")
+
+    frame_count = 0
+    skip_frames = 2          # xử lý AI mỗi 2 frame, giữ overlay cho frame bị skip
+    last_results = []
+    paused = False
+    start_time = time.time()
+
+    while True:
+        if not paused:
+            ret, frame = cap.read()
+            if not ret:
+                print("\n✓ Đã xử lý hết video.")
+                break
+
+            frame_count += 1
+
+            # Chỉ chạy AI mỗi `skip_frames` frame
+            if frame_count % skip_frames == 0:
+                last_results = engine.process_frame(frame)
+
+            display = _draw_video_overlay(
+                frame, last_results, frame_count, total_frames, fps_src
+            )
+
+            if writer:
+                writer.write(display)
+
+            cv2.imshow("Emotion Detection — Video", display)
+
+        # Xử lý phím bấm
+        key = cv2.waitKey(1) & 0xFF
+        if key in (ord('q'), 27):
+            print("\n✓ Dừng theo yêu cầu.")
+            break
+        elif key == ord(' '):
+            paused = not paused
+            print(f"  {'[Tạm dừng]' if paused else '[Tiếp tục]'}")
+        elif key == ord('s'):
+            ts = datetime.now().strftime("%Y%m%d_%H%M%S")
+            path = f"data/screenshot_{ts}.jpg"
+            os.makedirs('data', exist_ok=True)
+            cv2.imwrite(path, display)
+            print(f"  ✓ Đã lưu ảnh: {path}")
+
+    cap.release()
+    if writer:
+        writer.release()
+        print(f"✓ Đã lưu video kết quả: {args.output}")
+    cv2.destroyAllWindows()
+
+    elapsed = time.time() - start_time
+    proc_fps = frame_count / elapsed if elapsed > 0 else 0
+    print(f"✓ Kết thúc | {frame_count}/{total_frames} frames | {elapsed:.1f}s | {proc_fps:.1f} FPS xử lý")
+
+
+def _draw_video_overlay(frame, results, frame_count, total_frames, src_fps):
+    """Vẽ emotion box + progress bar lên frame video."""
+    import cv2
+
+    display = frame.copy()
+    h, w = display.shape[:2]
+
+    COLOR_MAP = {
+        'Happy': (0,255,0), 'Sad': (255,80,80), 'Angry': (0,0,255),
+        'Surprise': (0,165,255), 'Neutral': (180,180,180),
+        'Fear': (180,0,180), 'Disgust': (0,160,160),
+    }
+
+    for result in results:
+        x, y, bw, bh = result['bbox']
+        emotion   = result['emotion']
+        confidence = result['confidence']
+        color = COLOR_MAP.get(emotion, (255,255,255))
+
+        cv2.rectangle(display, (x, y), (x+bw, y+bh), color, 2)
+        label = f"{emotion}: {confidence:.0%}"
+        (lw, lh), _ = cv2.getTextSize(label, cv2.FONT_HERSHEY_SIMPLEX, 0.65, 2)
+        cv2.rectangle(display, (x, y-lh-10), (x+lw+6, y), color, -1)
+        cv2.putText(display, label, (x+3, y-5),
+                    cv2.FONT_HERSHEY_SIMPLEX, 0.65, (0,0,0), 2)
+
+    # Thanh tiến trình ở dưới cùng
+    bar_h = 6
+    progress = frame_count / total_frames if total_frames > 0 else 0
+    cv2.rectangle(display, (0, h-bar_h), (w, h), (50,50,50), -1)
+    cv2.rectangle(display, (0, h-bar_h), (int(w*progress), h), (0,200,255), -1)
+
+    # Thông tin frame / thời gian
+    cur_sec  = frame_count / src_fps if src_fps > 0 else 0
+    tot_sec  = total_frames / src_fps if src_fps > 0 else 0
+    info_txt = (f"Frame {frame_count}/{total_frames}  "
+                f"{cur_sec:.1f}s/{tot_sec:.1f}s  "
+                f"Faces: {len(results)}")
+    cv2.putText(display, info_txt, (10, 28),
+                cv2.FONT_HERSHEY_SIMPLEX, 0.6, (0,255,255), 2)
+
+    # Hướng dẫn nhỏ góc dưới
+    guide = "q: thoat | SPACE: tam dung | s: chup anh"
+    cv2.putText(display, guide, (10, h-12),
+                cv2.FONT_HERSHEY_SIMPLEX, 0.4, (180,180,180), 1)
+
+    return display
+
+
+# ══════════════════════════════════════════════════
+#  MODE 4: FINETUNE — fine-tune trên dataset
 # ══════════════════════════════════════════════════
 
 def run_finetune(args):
@@ -225,7 +375,7 @@ def run_finetune(args):
 
 
 # ══════════════════════════════════════════════════
-#  MODE 4: EVALUATE — đánh giá & so sánh model
+#  MODE 5: EVALUATE — đánh giá & so sánh model
 # ══════════════════════════════════════════════════
 
 def run_evaluate(args):
@@ -297,15 +447,17 @@ def build_parser() -> argparse.ArgumentParser:
         epilog="""
 Ví dụ:
   python main.py --mode webcam
-  python main.py --mode image --input face.jpg
+  python main.py --mode image   --input face.jpg
+  python main.py --mode video   --input clip.mp4
+  python main.py --mode video   --input clip.mp4 --output result.mp4
   python main.py --mode finetune --dataset dataset/ --epochs 15
   python main.py --mode evaluate --dataset dataset/
-  python main.py --mode webcam --weights models/finetuned.pt
+  python main.py --mode webcam  --weights models/finetuned.pt
         """
     )
 
     parser.add_argument('--mode', type=str, default='webcam',
-                        choices=['webcam', 'image', 'finetune', 'evaluate'],
+                        choices=['webcam', 'image', 'video', 'finetune', 'evaluate'],
                         help='Chế độ chạy (mặc định: webcam)')
 
     # Model
@@ -319,11 +471,11 @@ Ví dụ:
     parser.add_argument('--camera', type=int, default=0,
                         help='ID camera (mặc định: 0)')
 
-    # Image mode
+    # Image / Video mode
     parser.add_argument('--input', type=str, default=None,
-                        help='Đường dẫn ảnh đầu vào (mode image)')
+                        help='Đường dẫn ảnh hoặc video đầu vào')
     parser.add_argument('--output', type=str, default=None,
-                        help='Lưu ảnh kết quả vào file này (mode image)')
+                        help='Lưu kết quả ra file (image mode: .jpg | video mode: .mp4)')
 
     # Fine-tune / Evaluate
     parser.add_argument('--dataset', type=str, default=None,
@@ -352,6 +504,7 @@ def main():
     dispatch = {
         'webcam':   run_webcam,
         'image':    run_image,
+        'video':    run_video,
         'finetune': run_finetune,
         'evaluate': run_evaluate,
     }
